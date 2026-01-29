@@ -1,4 +1,4 @@
-# 🦅 RubricAPP - Gestor de Rúbricas Inteligente
+# 📚 RubricAPP - Gestor de Rúbricas Inteligente
 
 **RubricAPP** es una aplicación web moderna desarrollada sobre la plataforma **Google Apps Script (GAS)**, diseñada para facilitar a los docentes la creación, gestión y aplicación de rúbricas de evaluación de manera eficiente e inteligente.
 
