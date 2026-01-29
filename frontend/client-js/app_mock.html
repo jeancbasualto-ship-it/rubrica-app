@@ -1,0 +1,13 @@
+<script>
+// Mock minimal de google.script.run para pruebas locales
+(function(){
+    if(typeof window === 'undefined') return;
+    // Si el entorno ya provee google.script.run (Apps Script), no activar el mock
+    if (window.google && window.google.script && window.google.script.run) return;
+    window._mockDelay = 250;
+
+    // Datos mock editables
+    let sampleRubrics = {
+        <!-- Este archivo fue movido a tests/app_mock.html -->
+        <!-- Para desarrollo y ejecuciones locales, usa `tests/app_mock.html` en su lugar. -->
+        <!-- Archivo dejado como stub para evitar que contenido de pruebas se despliegue. -->

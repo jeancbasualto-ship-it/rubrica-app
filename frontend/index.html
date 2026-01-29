@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Rúbricas Inteligente v2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?!= include('frontend/styles/main') ?>
+        <style>
+            /* Oculta el modal legado de agregar/editar curso (archivo archivado en /archive)
+                 y asegura que el panel lateral esté por encima visualmente. */
+            #add-course-modal { display: none !important; visibility: hidden !important; pointer-events: none !important; }
+            #course-editor-panel { z-index: 99999 !important; }
+        </style>
+
+</head>
+<body class="p-4 sm:p-8 bg-gray-50 text-gray-800 font-sans h-screen flex flex-col md:block overflow-auto selection:bg-indigo-100 selection:text-indigo-700">
+    
+    <!-- Área de Notificaciones Flotante (Ahora abajo a la derecha) -->
+    <div id="message-area" class="hidden fixed bottom-5 right-5 z-[200] max-w-sm shadow-xl transform transition-all duration-300 flex flex-col-reverse gap-2"></div>
+    <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl p-6 md:p-8">
+        <div class="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
+            <!-- Sidebar (definitivo) -->
+            <aside id="prototype-sidebar" class="bg-white border-r border-gray-200 p-6 hidden md:block">
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">R</div>
+                    <div>
+                        <h1 class="text-lg font-bold">RubricAPP</h1>
+                        <p class="text-xs text-gray-500">Gestor de evaluación</p>
+                    </div>
+                </div>
+
+                <nav class="space-y-1" aria-label="Principal">
+                    <button id="nav-rubricas" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 font-medium">📋 Rúbricas</button>
+                    <button id="nav-cursos" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">🎓 Cursos</button>
+                    <button id="nav-calificar" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">📝 Calificar</button>
+                    <button id="nav-reportes" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">📊 Reportes</button>
+                    <button id="nav-ajustes" class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100">⚙️ Ajustes</button>
+                </nav>
+
+                <div class="mt-6">
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase">Acciones rápidas</h3>
+                    <div class="mt-2 grid gap-2">
+                        <button id="quick-new-rubric" class="w-full text-sm bg-indigo-600 text-white py-2 rounded-lg">+ Nueva rúbrica</button>
+                        <button id="quick-import-csv" class="w-full text-sm bg-green-100 text-green-800 py-2 rounded-lg">Importar CSV</button>
+                        <button id="manager-evals-btn" onclick="openEvaluationsManager()" class="w-full text-sm bg-indigo-50 text-indigo-700 py-2 rounded-lg border border-indigo-100 hover:bg-indigo-100">Gestionar Evals.</button>
+                        <button id="open-course-editor" class="w-full text-sm bg-gray-100 text-gray-800 py-2 rounded-lg">Editar cursos</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main area -->
+            <main class="flex-1">
+                <header id="prototype-header" class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-4">
+                        <button id="sidebar-toggle" class="md:hidden p-2 rounded bg-white border"><svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+                        <h2 class="text-2xl font-bold">Tablero</h2>
+                        <span class="text-sm text-gray-500">Resumen rápido de tu curso</span>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <label for="global-search" class="sr-only">Buscar</label>
+                        <div class="relative">
+                            <input id="global-search" type="search" placeholder="Buscar rúbricas, cursos o estudiantes" class="w-72 pl-10 pr-3 py-2 rounded-lg border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/></svg>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Prototype content sections -->
+                <!-- Prototype content sections -->
+                <section id="dashboard-main" class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">Resumen de cursos</h3>
+                    <!-- Contenedor dinámico del Dashboard -->
+                    <div id="dashboard-stats-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div class="col-span-full text-center py-10">
+                            <svg class="animate-spin h-8 w-8 text-indigo-500 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <p class="text-gray-500">Cargando información de cursos...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PAGE: Reports (Nuevo) -->
+                <section id="reports-page" class="hidden">
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 class="font-bold text-xl text-gray-800">Reportes de Evaluaciones</h3>
+                                <p class="text-sm text-gray-500">Genera y descarga los PDFs de las evaluaciones corregidas.</p>
+                            </div>
+                            <button onclick="loadEvaluationsForReports()" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">🔄 Actualizar</button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                             <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Curso</label>
+                                <select id="reports-select-course" onchange="handleReportsCourseChange()" class="block w-full p-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 max-h-10"></select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Evaluación</label>
+                                <select id="reports-select-eval" onchange="loadReportTable()" class="block w-full p-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 max-h-10" disabled>
+                                    <option value="">-- Selecciona un curso --</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Tabla de Resultados -->
+                        <div class="overflow-x-auto min-h-[300px]">
+                            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-medium text-gray-500">Estudiante</th>
+                                        <th class="px-4 py-3 text-left font-medium text-gray-500">Nota</th>
+                                        <th class="px-4 py-3 text-left font-medium text-gray-500">Puntaje</th>
+                                        <th class="px-4 py-3 text-left font-medium text-gray-500">Estado</th>
+                                        <th class="px-4 py-3 text-right font-medium text-gray-500">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reports-table-body" class="bg-white divide-y divide-gray-200">
+                                    <tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Selecciona un curso y evaluación para ver los reportes.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="rubrics-page" class="hidden">
+                    <!-- Panel de Generación IA: Opciones Separadas -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <!-- Opción 1: Prompt -->
+                        <div class="bg-indigo-50 p-6 rounded-xl border border-indigo-100 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow">
+                            <div class="flex items-center gap-2 mb-4">
+                                <span class="text-2xl">✨</span>
+                                <h3 class="text-lg font-bold text-indigo-900">Generar con IA</h3>
+                            </div>
+                            <p class="text-xs text-gray-600 mb-4 h-10">Describe el objetivo de evaluación y deja que la IA cree la rúbrica por ti.</p>
+                            
+                            <textarea id="ai-prompt" rows="4" class="w-full p-3 rounded-lg border border-indigo-200 focus:ring-2 focus:ring-indigo-400 focus:border-transparent mb-4 text-sm" placeholder="Ej: Rúbrica para evaluar un ensayo sobre cambio climático para 2° Medio..."></textarea>
+                            
+                            <div class="mt-auto text-right">
+                                <button onclick="handleGenerateRubric()" id="ai-generate-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition-transform active:scale-95 flex justify-center items-center gap-2">
+                                    <span>🚀</span> Generar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Opción 2: Archivo -->
+                        <div class="bg-purple-50 p-6 rounded-xl border border-purple-100 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow">
+                            <div class="flex items-center gap-2 mb-4">
+                                <span class="text-2xl">📂</span>
+                                <h3 class="text-lg font-bold text-purple-900">Subir Documento</h3>
+                            </div>
+                            <p class="text-xs text-gray-600 mb-4 h-10">Sube una prueba o guía (PDF/Doc) para extraer los criterios automáticamente.</p>
+                            
+                            <div class="border-2 border-dashed border-purple-200 rounded-lg p-6 bg-white hover:bg-purple-50 transition-colors cursor-pointer flex flex-col items-center justify-center mb-4 flex-1" onclick="document.getElementById('local-file-input').click()">
+                                <span class="text-4xl mb-2">📄</span>
+                                <span class="text-sm font-medium text-purple-700">Click para subir archivo</span>
+                                <span class="text-xs text-gray-400 mt-1">.pdf, .docx, .txt</span>
+                                <input type="file" id="local-file-input" accept=".pdf,.docx,.txt,.csv" class="hidden" onchange="updateFileDisplay(this)">
+                            </div>
+
+                            <div id="selected-file-display" class="hidden mb-3 bg-white border border-purple-200 rounded px-3 py-2 flex items-center justify-between shadow-sm">
+                                <span class="text-xs font-semibold text-gray-700 truncate max-w-[150px]" id="file-name-display">archivo.pdf</span>
+                                <button onclick="document.getElementById('local-file-input').value=''; updateFileDisplay(document.getElementById('local-file-input')); event.stopPropagation();" class="text-gray-400 hover:text-red-500 text-lg font-bold">&times;</button>
+                            </div>
+
+                            <div class="mt-auto">
+                                <button onclick="handleImportRubric()" id="ai-import-btn" disabled class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 px-4 rounded-lg shadow transition-transform active:scale-95 flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span>🤖</span> Analizar Documento
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+                    <!-- Contenedor de Previsualización + Botones de Acción -->
+                    <div id="rubric-display-wrapper" class="mb-8">
+                        <div class="flex justify-between items-end mb-2 px-1">
+                             <h4 class="text-sm font-bold text-gray-500 uppercase tracking-wide">Previsualización</h4>
+                             <div class="flex gap-2">
+                                <button id="save-rubric-btn" onclick="manualSaveRubric()" disabled class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-md border border-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    💾 Guardar
+                                </button>
+                                <button id="edit-rubric-btn" onclick="openEditModal()" disabled class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md border disabled:opacity-50">
+                                    ✏️ Editar
+                                </button>
+                                <button id="export-rubric-btn" onclick="exportActiveRubric()" disabled class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md border disabled:opacity-50 hidden">
+                                    ⬇️ Exportar
+                                </button>
+                             </div>
+                        </div>
+                        <div id="rubric-display" class="overflow-x-auto bg-white p-4 rounded-lg shadow-sm border border-gray-200 min-h-[100px]">
+                            <p class="text-gray-400 italic text-center py-8">Aquí aparecerá la previsualización de la rúbrica generada o cargada.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">Mis Rúbricas Guardadas</h3>
+                        <button onclick="loadSavedRubricsList()" class="text-sm text-indigo-600 hover:underline">🔄 Actualizar</button>
+                    </div>
+                    <!-- Contenedor grid para rúbricas -->
+                    <div id="saved-rubrics-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Aquí se renderizan las rúbricas vía JS -->
+                    </div>
+                </section>
+
+                <section id="courses-page" class="hidden">
+                    <div class="flex justify-between items-center mb-6">
+                         <h3 class="text-xl font-bold text-gray-800">Gestión de Cursos</h3>
+                         <button onclick="window.openCourseEditor()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                            <span>+</span> Nuevo Curso
+                         </button>
+                    </div>
+
+                    <!-- Lista de cursos renderizada por app_courses_basic.js -->
+                    <div id="course-list-display" class="grid grid-cols-1 gap-4">
+                         <div class="text-center py-10 text-gray-500">
+                             Cargando cursos...
+                         </div>
+                    </div>
+                </section>
+
+                <section id="settings-page" class="hidden">
+                    <?!= include('frontend/views/settings_view') ?>
+                </section>
+
+                <section id="calification-page" class="hidden">
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <h3 class="font-bold text-xl text-gray-800 mb-4">Calificación de Estudiantes</h3>
+                        
+                        <!-- Panel de Selección -->
+                        <!-- Panel de Selección Integrado (4 items) -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-100 items-end">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Curso</label>
+                                <select id="select-course" onchange="loadStudentsAndResetGrading()" class="block w-full p-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                                    <option value="">-- Cursos cargando... --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Evaluación</label>
+                                <select id="select-evaluation" onchange="handleEvaluationChange()" class="block w-full p-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                                    <option value="">-- Seleccionar Curso --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Rúbrica</label>
+                                <select id="select-rubric-for-course" onchange="handleRubricSelectionChange()" class="block w-full p-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                                    <option value="">-- Seleccionar --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Estudiante</label>
+                                <select id="select-student" onchange="handleStudentChange()" class="block w-full p-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                                    <option value="">-- Seleccionar Curso --</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Área de Renderizado de Rúbrica -->
+                        <div id="grading-rubric-display" class="mb-6 overflow-x-auto">
+                            <p class="text-center text-gray-400 py-8">Selecciona un curso, evaluación y estudiante para comenzar.</p>
+                        </div>
+
+                        <!-- Área de Feedback -->
+                        <div class="mb-6 bg-yellow-50 p-4 rounded-lg border border-yellow-100">
+                             <label class="block text-sm font-bold text-gray-700 mb-2">Retroalimentación / Comentarios:</label>
+                             <textarea id="feedback-text" rows="3" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-yellow-400 focus:outline-none" placeholder="Escribe aquí observaciones cualitativas para el estudiante..."></textarea>
+                        </div>
+
+                        <!-- Resumen y Acciones -->
+                        <div class="border-t pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div class="flex items-center gap-6">
+                                <div>
+                                    <span class="block text-xs text-gray-500 uppercase">Puntaje</span>
+                                    <span id="final-score" class="text-2xl font-bold text-gray-800">0 / 0</span>
+                                </div>
+                                <div>
+                                    <span class="block text-xs text-gray-500 uppercase">Nota Final</span>
+                                    <span id="final-grade" class="text-3xl font-extrabold text-gray-300">--</span>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button id="btn-save-grade" onclick="saveCurrentGrade()" disabled class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-semibold shadow-sm transition-all flex items-center gap-2">
+                                    <span>💾</span> Guardar Nota
+                                </button>
+                                <button onclick="generatePDFReport()" id="doc-pdf-btn" disabled class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span>📄</span> PDF
+                                </button>
+                                <button onclick="generateDocReport()" id="doc-word-btn" disabled class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span>📝</span> DOC
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+
+            </main>
+        </div>
+    </div>
+
+    <!-- FASE 3: Modal de Edición (oculto por defecto) -->
+    <div id="edit-rubric-modal" class="modal hidden fixed inset-0 items-center justify-center z-50">
+        <!-- Overlay semitransparente -->
+        <div class="bg-black/40 absolute inset-0" data-role="edit-modal-overlay"></div>
+        <div class="modal-content relative z-10 max-w-3xl w-full mx-4 bg-white rounded-lg shadow-lg p-6 transform transition-all duration-200 ease-out scale-95 opacity-0">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">✏️ Editar Rúbrica</h2>
+                <button onclick="closeEditModal()" aria-label="Cerrar" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Nombre</label>
+                    <input type="text" id="edit-rubric-name" class="w-full p-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Descripción</label>
+                    <textarea id="edit-rubric-description" class="w-full p-2 border rounded-lg" rows="2"></textarea>
+                </div>
+
+                <div>
+                    <div class="flex justify-between mb-2">
+                        <h3 class="text-lg font-semibold">Niveles</h3>
+                        <button onclick="addLevelInEdit()" class="bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-1 px-3 rounded">+ Nivel</button>
+                    </div>
+                    <div id="edit-levels-container" class="space-y-2"></div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between mb-2">
+                        <h3 class="text-lg font-semibold">Criterios</h3>
+                        <button onclick="addCriterionInEdit()" class="bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-1 px-3 rounded">+ Criterio</button>
+                    </div>
+                    <div id="edit-criteria-container" class="space-y-4"></div>
+                </div>
+
+                <div class="flex space-x-3 pt-4 border-t">
+                    <button onclick="saveEditedRubricChanges()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+                        💾 Guardar
+                    </button>
+                    <button onclick="closeEditModal()" class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEGACY: Modal de Agregar/Editar Curso movido a `archive/add-course-modal_legacy.html` -->
+    <!-- El panel lateral `course-editor-panel` es la UI preferente. Mantener este modal solo como fallback documentado. -->
+
+    <!-- Modal: Confirmar eliminación de curso -->
+    <div id="delete-course-modal" class="fixed inset-0 hidden items-center justify-center z-50">
+        <div class="bg-black/40 absolute inset-0"></div>
+        <div class="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
+            <h3 class="text-lg font-semibold mb-3">Confirmar eliminación</h3>
+            <p id="delete-course-text" class="text-sm text-gray-700 mb-4">¿Eliminar curso?</p>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeDeleteCourseModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded">Cancelar</button>
+                <button id="delete-course-confirm-btn" onclick="deleteCourseConfirmed()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-center text-gray-500 pb-4">
+        <p class="text-xs font-medium">RubricAPP © 2026</p>
+        <p class="text-xs mt-1">
+            Desarrollada por <span class="font-semibold text-gray-700">Jean Concha Basualto</span>
+        </p>
+        <p class="text-[10px] text-gray-400 mt-0.5">
+            Licenciado en Educación y Profesor de Enseñanza Básica
+        </p>
+        <p class="text-[10px] text-gray-400 mt-0.5 hover:text-indigo-500 transition-colors">
+            <a href="mailto:jeanclaudioconcha@gmail.com">contacto: jeanclaudioconcha@gmail.com</a>
+        </p>
+    </footer>
+
+    <?!= include('frontend/client-js/app_globals') ?>
+    <?!= include('frontend/client-js/app_mock') ?>
+    <?!= include('frontend/client-js/app_logic') ?>
+    <?!= include('frontend/client-js/app_rubrics_api') ?>
+    <?!= include('frontend/components/app_autosave') ?>
+    <?!= include('frontend/client-js/app_generation') ?>
+    <?!= include('frontend/client-js/app_render_export') ?>
+    <?!= include('frontend/views/editor/app_edit_modal') ?>
+    <?!= include('frontend/views/editor/app_edit_levels') ?>
+    <?!= include('frontend/views/editor/app_edit_criteria') ?>
+    <?!= include('frontend/views/courses/app_courses_basic') ?>
+    <?!= include('frontend/views/courses/app_courses_modal') ?>
+    <!-- Modal: Crear Evaluación Rápida -->
+    <div id="create-eval-modal" class="modal hidden fixed inset-0 items-center justify-center z-[100]">
+         <div class="bg-black/40 absolute inset-0 transition-opacity" onclick="closeCreateEvalModal()"></div>
+         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative z-10 transform scale-100 transition-transform">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Nueva Evaluación</h3>
+                <button onclick="closeCreateEvalModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            
+            <p class="text-sm text-gray-500 mb-4">Ingresa un nombre para identificar esta evaluación (ej: "Prueba Unidad 1").</p>
+            
+            <div class="mb-6">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Nombre</label>
+                <input type="text" id="new-eval-name-input" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Nombre de la evaluación..." autofocus>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <button onclick="closeCreateEvalModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancelar</button>
+                <button onclick="confirmCreateEval()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md transition-transform active:scale-95">Crear Evaluación</button>
+            </div>
+         </div>
+    </div>
+
+    <?!= include('frontend/views/courses/app_courses_report') ?>
+    <?!= include('frontend/views/courses/app_courses_delete') ?>
+    <?!= include('frontend/views/grading/app_grading_selects') ?>
+    <?!= include('frontend/views/grading/app_grading_rubric') ?>
+    <?!= include('frontend/components/app_docs') ?>
+    <?!= include('frontend/views/courses/course_editor_panel') ?>
+    <?!= include('frontend/views/courses/app_evaluations_modal') ?>
+    <?!= include('frontend/client-js/app_navigation') ?>
+    <?!= include('frontend/client-js/app_dashboard') ?>
+    <?!= include('frontend/client-js/app_init') ?>
+    <script>
+        // Navegación del sidebar: muestra/oculta secciones principales
+        (function(){
+            // ... (legacy script block handled by app_navigation now, keeping for safety or removing if empty)
+        })();
+    </script>
+</body>

@@ -1,0 +1,48 @@
+<script>
+function renderEditCriteria() {
+    const container = document.getElementById('edit-criteria-container');
+    container.innerHTML = editingRubric.criteria.map((criterion, idx) => `
+        <div class="border p-3 rounded">
+            <div class="flex space-x-2 mb-2">
+                <input type="text" value="${criterion.name}" onchange="editingRubric.criteria[${idx}].name = this.value" class="flex-1 p-2 border rounded" placeholder="Criterio">
+                <input type="number" value="${criterion.max_points}" onchange="editingRubric.criteria[${idx}].max_points = parseInt(this.value)" class="w-20 p-2 border rounded" placeholder="Max">
+                <button onclick="removeCriterionInEdit(${idx})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded">-</button>
+            </div>
+            <div class="text-xs space-y-1">
+                ${editingRubric.levels.map((level, levelIdx) => {
+                    const desc = criterion.level_descriptions.find(d => d.level_id === level.id);
+                    return `<textarea onchange="updateCriterionDescription(${idx}, ${level.id}, this.value)" class="w-full p-1 border rounded text-xs" placeholder="${level.name}" rows="2">${desc ? desc.description : ''}</textarea>`;
+                }).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateCriterionDescription(criterionIdx, levelId, newDesc) {
+    const criterion = editingRubric.criteria[criterionIdx];
+    const descObj = criterion.level_descriptions.find(d => d.level_id === levelId);
+    if (descObj) {
+        descObj.description = newDesc;
+    } else {
+        criterion.level_descriptions.push({ level_id: levelId, description: newDesc });
+    }
+}
+
+function addCriterionInEdit() {
+    editingRubric.criteria.push({
+        name: 'Nuevo Criterio',
+        max_points: 10,
+        level_descriptions: editingRubric.levels.map(l => ({ level_id: l.id, description: '' }))
+    });
+    renderEditCriteria();
+}
+
+function removeCriterionInEdit(idx) {
+    if (editingRubric.criteria.length <= 1) {
+        showMessage('Debe haber al menos un criterio.', 'error');
+        return;
+    }
+    editingRubric.criteria.splice(idx, 1);
+    renderEditCriteria();
+}
+</script>

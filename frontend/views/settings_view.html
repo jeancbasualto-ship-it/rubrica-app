@@ -1,0 +1,67 @@
+<div class="max-w-4xl mx-auto mt-6">
+    <h2 class="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
+        <span>⚙️</span> Configuración del Sistema
+    </h2>
+
+    <!-- Información de Versión -->
+    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-6 mb-6 flex items-start space-x-4">
+        <div class="p-3 bg-white rounded-lg shadow-sm">
+            <span class="text-2xl">🚀</span>
+        </div>
+        <div>
+            <h3 class="font-bold text-indigo-900">EduSuite v2.2</h3>
+            <p class="text-sm text-indigo-700 mt-1">
+                Estás utilizando la última versión estable. El sistema está conectado a tu Google Drive para el almacenamiento seguro de datos.
+            </p>
+        </div>
+    </div>
+
+    <!-- General Settings -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Escala de Evaluación</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nota Mínima</label>
+                <div class="relative">
+                    <input type="number" value="1.0" disabled class="block w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 font-mono">
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">🔒</div>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nota Aprobación</label>
+                <div class="relative">
+                    <input type="number" value="4.0" disabled class="block w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 font-mono">
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">🔒</div>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nota Máxima</label>
+                <div class="relative">
+                    <input type="number" value="7.0" disabled class="block w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-500 font-mono">
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">🔒</div>
+                </div>
+            </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-3 flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            La configuración de escala personalizada estará disponible en la próxima actualización.
+        </p>
+    </div>
+
+    <!-- Data Management -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Mantenimiento y Datos</h3>
+        
+        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
+            <div>
+                <h4 class="font-bold text-gray-800 text-sm">Sincronización de Datos</h4>
+                <p class="text-xs text-gray-500 mt-1">Si notas lentitud o datos desactualizados, fuerza una recarga desde Drive.</p>
+            </div>
+            <button onclick="showMessage('Sincronizando...', 'loading'); loadSavedRubricsList(); loadCoursesFromDrive(); setTimeout(()=>showMessage('Datos sincronizados correctamente.', 'success'), 1500);" class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:border-indigo-300 hover:text-indigo-600 rounded-lg text-sm text-gray-700 shadow-sm transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Recargar Todo
+            </button>
+        </div>
+    </div>
+</div>

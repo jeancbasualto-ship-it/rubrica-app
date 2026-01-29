@@ -1,0 +1,103 @@
+<script>
+function handleGenerateRubric() {
+    const prompt = document.getElementById('ai-prompt').value.trim();
+    if (!prompt) {
+        showMessage('Ingresa una descripción de la tarea.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('ai-generate-btn');
+    btn.disabled = true;
+    showMessage('Generando rúbrica con IA...', 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const rubric = JSON.parse(response);
+                if (rubric.error) {
+                    showMessage('Error: ' + rubric.error, 'error');
+                } else {
+                    activeRubric = rubric;
+                    renderRubric();
+                    autoSaveRubric(rubric, 'ai');
+                    showMessage('Rúbrica generada y guardada!', 'success');
+                }
+            } catch (e) {
+                showMessage('Error: ' + e.message, 'error');
+           }
+            btn.disabled = false;
+        })
+        .withFailureHandler(err => {
+            showMessage('Error: ' + err.message, 'error');
+            btn.disabled = false;
+        })
+        .generateRubric(prompt);
+}
+
+function updateFileDisplay(input) {
+    const file = input.files[0];
+    selectedFile = file;
+    const importBtn = document.getElementById('ai-import-btn');
+    
+    if (file) {
+        document.getElementById('file-name-display').textContent = file.name;
+        document.getElementById('selected-file-display').classList.remove('hidden');
+        importBtn.disabled = false;
+        showMessage(`"${file.name}" seleccionado.`, 'info');
+    } else {
+        document.getElementById('file-name-display').textContent = 'N/A';
+        document.getElementById('selected-file-display').classList.add('hidden');
+        importBtn.disabled = true;
+    }
+}
+
+function handleImportRubric() {
+    if (!selectedFile) {
+        showMessage('Selecciona un archivo primero.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('ai-import-btn');
+    btn.disabled = true;
+    showMessage(`Procesando "${selectedFile.name}"...`, 'loading');
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const arrayBuffer = e.target.result;
+        const byteArray = Array.from(new Uint8Array(arrayBuffer));
+
+        const fileObject = {
+            data: byteArray,
+            name: selectedFile.name,
+            mimeType: selectedFile.type || 'application/octet-stream'
+        };
+
+        google.script.run
+            .withSuccessHandler(response => {
+                try {
+                    const rubric = JSON.parse(response);
+                    if (rubric.error) {
+                        showMessage('Error: ' + rubric.error, 'error');
+                    } else {
+                        activeRubric = rubric;
+                        renderRubric();
+                        autoSaveRubric(rubric, 'import');
+                        showMessage('Importada y guardada!', 'success');
+                    }
+                } catch (e) {
+                    showMessage('Error: ' + e.message, 'error');
+                }
+                btn.disabled = false;
+                document.getElementById('local-file-input').value = '';
+                document.getElementById('selected-file-display').classList.add('hidden');
+            })
+            .withFailureHandler(err => {
+                showMessage('Error: ' + err.message, 'error');
+                btn.disabled = false;
+            })
+            .uploadAndAnalyzeRubricContent(fileObject);
+    };
+
+    reader.readAsArrayBuffer(selectedFile);
+}
+</script>

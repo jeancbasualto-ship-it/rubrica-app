@@ -1,0 +1,203 @@
+<script>
+// ==========================================
+// MÓDULO DE REPORTES Y PDFs
+// ==========================================
+
+function initReportsPage() {
+    console.log("Iniciando página de reportes...");
+    loadCoursesForReports();
+}
+
+function loadCoursesForReports() {
+    const selector = document.getElementById('reports-select-course');
+    if (!selector) return;
+
+    selector.innerHTML = '<option value="">-- Seleccionar curso --</option>';
+    
+    // Usar la variable global 'courses' si está cargada
+    if (Object.keys(courses).length > 0) {
+        Object.values(courses).forEach(c => {
+            selector.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+        });
+    } else {
+        // Intentar cargar si no hay
+        loadCoursesFromDrive(); 
+        // Reintentar en 2 seg
+        setTimeout(loadCoursesForReports, 2000);
+    }
+}
+
+function handleReportsCourseChange() {
+    const courseName = document.getElementById('reports-select-course').value;
+    const evalSelector = document.getElementById('reports-select-eval');
+    
+    evalSelector.innerHTML = '<option value="">-- Seleccionar evaluación --</option>';
+    document.getElementById('reports-table-body').innerHTML = '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Selecciona una evaluación para ver los reportes.</td></tr>';
+    
+    if (!courseName) {
+        evalSelector.disabled = true;
+        return;
+    }
+
+    const course = courses[courseName];
+    if (course && course.evaluations && course.evaluations.length > 0) {
+        course.evaluations.forEach(ev => {
+            evalSelector.innerHTML += `<option value="${ev.id}">${ev.name}</option>`;
+        });
+        evalSelector.disabled = false;
+    } else {
+        evalSelector.innerHTML = '<option value="">(Sin evaluaciones)</option>';
+        evalSelector.disabled = true;
+    }
+}
+
+function loadReportTable() {
+    const courseName = document.getElementById('reports-select-course').value;
+    const evaluationId = document.getElementById('reports-select-eval').value;
+    const tbody = document.getElementById('reports-table-body');
+    
+    if (!courseName || !evaluationId) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-indigo-500"><svg class="animate-spin h-6 w-6 mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Cargando calificaciones...</td></tr>';
+
+    google.script.run
+        .withSuccessHandler(json => {
+            const grades = JSON.parse(json);
+            renderReportTable(courseName, evaluationId, grades);
+        })
+        .withFailureHandler(err => {
+            tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Error: ${err.message}</td></tr>`;
+        })
+        .loadGradesFromSheet(courseName, evaluationId);
+}
+
+function renderReportTable(courseName, evaluationId, grades) {
+    const tbody = document.getElementById('reports-table-body');
+    const course = courses[courseName];
+    if (!course) return;
+
+    // Mapa de notas para acceso rápido
+    const gradeMap = {};
+    grades.forEach(g => gradeMap[g.studentId] = g);
+
+    if (course.students.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No hay estudiantes en este curso.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    course.students.forEach(student => {
+        const grade = gradeMap[student.id];
+        const hasCheck = !!grade;
+        
+        let statusBadge = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-400">Pendiente</span>';
+        let actions = `<button disabled class="text-gray-300 cursor-not-allowed">Sin nota</button>`;
+        let nota = '--';
+        let pts = '--';
+
+        if (hasCheck) {
+            statusBadge = '<span class="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">✓ Calificado</span>';
+            nota = `<span class="font-bold ${parseFloat(grade.finalGrade) >= 4.0 ? 'text-blue-600' : 'text-red-500'}">${grade.finalGrade}</span>`;
+            pts = grade.totalScore || '--';
+            
+            // Botones de acción
+            actions = `<div class="flex gap-2 justify-end">
+                <button onclick="generateReportFromTable('${courseName}', '${evaluationId}', '${student.id}', '${student.name}', 'pdf')" class="text-white text-xs bg-red-600 hover:bg-red-700 px-2 py-1 rounded flex items-center gap-1">
+                    📄 PDF
+                </button>
+                <button onclick="generateReportFromTable('${courseName}', '${evaluationId}', '${student.id}', '${student.name}', 'doc')" class="text-white text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded flex items-center gap-1">
+                    📝 DOC
+                </button>
+            </div>`;
+        }
+
+        html += `
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-3 text-gray-900 font-medium">${student.name}</td>
+                <td class="px-4 py-3">${nota}</td>
+                <td class="px-4 py-3 text-gray-600">${pts}</td>
+                <td class="px-4 py-3">${statusBadge}</td>
+                <td class="px-4 py-3 text-right">${actions}</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+function generateReportFromTable(courseName, evalId, studentId, studentName, type) {
+    showMessage(`Preparando ${type.toUpperCase()} para ${studentName}...`, 'loading');
+    
+    google.script.run
+        .withSuccessHandler(json => {
+            const grades = JSON.parse(json);
+            const studentGrade = grades.find(g => g.studentId === studentId);
+            
+            if(!studentGrade) {
+                showMessage('Error: No se encontraron datos de nota.', 'error');
+                return;
+            }
+            
+            // Rúbrica
+            const course = courses[courseName];
+            const rubricId = course.rubrics ? course.rubrics[evalId] : null;
+            
+            if(!rubricId) {
+                if(activeRubric) {
+                    _callBackendGeneration(courseName, evalId, studentName, studentGrade, activeRubric, type);
+                } else {
+                    showMessage('Error: Rúbrica desconocida. Cárgala primero.', 'error');
+                }
+                return;
+            }
+            
+            // Cargar rúbrica
+            google.script.run
+                .withSuccessHandler(rJson => {
+                    const rubric = JSON.parse(rJson);
+                    _callBackendGeneration(courseName, evalId, studentName, studentGrade, rubric, type);
+                })
+                .loadRubricById(rubricId);
+        })
+        .loadGradesFromSheet(courseName, evalId);
+}
+
+function _callBackendGeneration(courseName, evalId, studentName, gradingData, rubric, type) {
+    const evalSelect = document.getElementById('reports-select-eval');
+    const evalName = evalSelect.options[evalSelect.selectedIndex].text;
+
+    const contextData = {
+        courseName: courseName,
+        evaluationName: evalName,
+        studentName: studentName,
+        finalGrade: gradingData.finalGrade,
+        totalScore: gradingData.totalScore,
+        feedback: gradingData.feedback,
+        rubric: rubric,
+        scores: gradingData.scores
+    };
+    
+    const backendFunc = type === 'pdf' ? 'generateStudentReportPDF' : 'generateStudentReportDoc';
+    
+    google.script.run
+        .withSuccessHandler(res => {
+            const result = JSON.parse(res);
+            if(result.success) {
+                const icon = type === 'pdf' ? '📄' : '📝';
+                const msg = `
+                    <div class="flex flex-col gap-2">
+                        <span>Reporte listo.</span>
+                        <a href="${result.url}" target="_blank" style="display:inline-block; background-color:#4F46E5; color:white; padding:6px 12px; border-radius:4px; text-decoration:none; font-weight:bold; margin-top:5px; font-size:12px;">
+                           ${icon} ABRIR AHORA
+                        </a>
+                    </div>
+                `;
+                showMessage(msg, 'success');
+            } else {
+                showMessage('Error: ' + result.error, 'error');
+            }
+        })
+        .withFailureHandler(e => showMessage('Error Gen: ' + e.message, 'error'))
+        [backendFunc](contextData);
+}
+</script>

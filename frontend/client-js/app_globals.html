@@ -1,0 +1,177 @@
+<script>
+// Global constants and state
+const PASSING_PERCENTAGE = 0.6;
+const MIN_GRADE = 1.0;
+const PASS_GRADE = 4.0;
+const MAX_GRADE = 7.0;
+
+let activeRubric = null;
+let courses = {};
+let currentGrading = {};
+let currentFinalGrade = '1.0';
+let currentTotalScore = '0/0';
+let selectedFile = null;
+let savedRubrics = [];
+let editingRubric = null;
+let editingCourse = null;
+
+// UX helper: messages
+function showMessage(message, type) {
+    const area = document.getElementById('message-area');
+    let baseClasses = 'mb-4 p-3 rounded-lg text-sm transition-all duration-300 ';
+
+    if (type === 'success') baseClasses += 'bg-green-100 text-green-700 border border-green-300';
+    else if (type === 'error') baseClasses += 'bg-red-100 text-red-700 border border-red-300';
+    else if (type === 'info') baseClasses += 'bg-blue-100 text-blue-700 border border-blue-300';
+    else if (type === 'loading') {
+        baseClasses += 'bg-yellow-100 text-yellow-700 border border-yellow-300';
+        message = `<div class="flex items-center"><svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>${message}</div>`;
+    }
+
+    if (!area) return console.warn('Área de mensajes no encontrada');
+    area.className = baseClasses;
+    area.innerHTML = message;
+    area.classList.remove('hidden');
+
+    if (type !== 'loading') {
+        // Si el mensaje tiene un enlace, esperar más o no cerrar automáticamente
+        const hasLink = message.includes('<a href');
+        const timeout = hasLink ? 15000 : 5000;
+        setTimeout(() => area.classList.add('hidden'), timeout);
+    }
+}
+
+// ============================================
+// PERSISTENCIA DE CALIFICACIONES (FRONTEND)
+// ============================================
+
+/**
+ * Guarda la calificación actual del estudiante seleccionado.
+ */
+function saveCurrentGrade() {
+    const courseSelect = document.getElementById('select-course');
+    const studentSelect = document.getElementById('select-student');
+    const evalSelect = document.getElementById('select-evaluation');
+
+    if (!courseSelect || !studentSelect || !evalSelect) {
+        console.warn('Selectores de calificación no encontrados');
+        return;
+    }
+
+    const courseName = courseSelect.options[courseSelect.selectedIndex]?.text;
+    const studentId = studentSelect.value;
+    const evaluationId = evalSelect.value;
+
+    if (!courseName || !studentId || !evaluationId) {
+        console.warn('Datos incompletos para guardar calificación');
+        return;
+    }
+
+    const gradingData = {
+        scores: currentGrading,
+        finalGrade: currentFinalGrade,
+        totalScore: currentTotalScore
+    };
+
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.success) {
+                showMessage('Calificación guardada automáticamente', 'success');
+            } else if (result.error) {
+                console.error('Error al guardar:', result.error);
+            }
+        })
+        .withFailureHandler(err => console.error('Error guardando calificación:', err))
+        .saveGradeToSheet(courseName, studentId, evaluationId, gradingData);
+}
+
+/**
+ * Carga las calificaciones guardadas para el estudiante seleccionado.
+ */
+function loadStudentGrades() {
+    const courseSelect = document.getElementById('select-course');
+    const studentSelect = document.getElementById('select-student');
+    const evalSelect = document.getElementById('select-evaluation');
+
+    if (!courseSelect || !studentSelect || !evalSelect) return;
+
+    const courseName = courseSelect.options[courseSelect.selectedIndex]?.text;
+    const studentId = studentSelect.value;
+    const evaluationId = evalSelect.value;
+
+    if (!courseName || !evaluationId) return;
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const grades = JSON.parse(response);
+                if (Array.isArray(grades)) {
+                    const studentGrade = grades.find(g => g.studentId === studentId);
+                    if (studentGrade) {
+                        currentGrading = studentGrade.scores || {};
+                        currentFinalGrade = studentGrade.finalGrade || '1.0';
+                        currentTotalScore = studentGrade.totalScore || '0/0';
+                        // Actualizar UI si hay función de render
+                        if (typeof renderGradingFromSaved === 'function') {
+                            renderGradingFromSaved();
+                        }
+                        console.log('Calificación cargada para', studentId);
+                    }
+                }
+            } catch (e) {
+                console.error('Error parseando calificaciones:', e);
+            }
+        })
+        .withFailureHandler(err => console.error('Error cargando calificaciones:', err))
+        .loadGradesFromSheet(courseName, evaluationId);
+}
+
+// ============================================
+// BÚSQUEDA GLOBAL
+// ============================================
+
+/**
+ * Filtra rúbricas, cursos y estudiantes según el término de búsqueda.
+ */
+function globalSearch(searchTerm) {
+    if (!searchTerm || searchTerm.trim() === '') {
+        // Mostrar todo
+        document.querySelectorAll('.rubric-card, .course-card, .student-item').forEach(el => {
+            el.style.display = '';
+        });
+        return;
+    }
+
+    const term = searchTerm.toLowerCase().trim();
+
+    // Filtrar rúbricas
+    document.querySelectorAll('.rubric-card').forEach(card => {
+        const name = card.querySelector('h4')?.textContent?.toLowerCase() || '';
+        const desc = card.querySelector('p')?.textContent?.toLowerCase() || '';
+        card.style.display = (name.includes(term) || desc.includes(term)) ? '' : 'none';
+    });
+
+    // Filtrar cursos
+    document.querySelectorAll('.course-card').forEach(card => {
+        const name = card.querySelector('h4, .course-name')?.textContent?.toLowerCase() || '';
+        card.style.display = name.includes(term) ? '' : 'none';
+    });
+
+    // Filtrar estudiantes
+    document.querySelectorAll('.student-item').forEach(item => {
+        const name = item.textContent?.toLowerCase() || '';
+        item.style.display = name.includes(term) ? '' : 'none';
+    });
+}
+
+// Vincular búsqueda al input global
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('global-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            globalSearch(e.target.value);
+        });
+    }
+});
+</script>

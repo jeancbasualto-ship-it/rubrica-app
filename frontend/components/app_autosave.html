@@ -1,0 +1,14 @@
+<script>
+function autoSaveRubric(rubric, origin = 'ai') {
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.success && activeRubric) {
+                activeRubric.id = result.id;
+                loadSavedRubricsList();
+            }
+        })
+        .withFailureHandler(err => console.error('Error auto-guardando:', err))
+        .saveRubricToDrive(rubric, origin);
+}
+</script>

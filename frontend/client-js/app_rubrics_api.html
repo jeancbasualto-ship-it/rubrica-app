@@ -1,0 +1,110 @@
+<script>
+function loadSavedRubricsList() {
+    const container = document.getElementById('saved-rubrics-container');
+    container.innerHTML = '<p class="text-gray-500 italic col-span-full">Cargando...</p>';
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                savedRubrics = JSON.parse(response);
+                renderSavedRubricsList();
+            } catch (e) {
+                showMessage('Error: ' + e.message, 'error');
+                container.innerHTML = '<p class="text-red-500 col-span-full">Error al cargar.</p>';
+            }
+        })
+        .withFailureHandler(err => {
+            showMessage('Error: ' + err.message, 'error');
+            container.innerHTML = '<p class="text-red-500 col-span-full">Error de conexión.</p>';
+        })
+        .listSavedRubrics();
+}
+
+function renderSavedRubricsList() {
+    const container = document.getElementById('saved-rubrics-container');
+    
+    if (savedRubrics.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 italic col-span-full">No hay rúbricas guardadas.</p>';
+        return;
+    }
+
+    container.innerHTML = savedRubrics.map(r => `
+        <div class="rubric-card bg-white p-4 rounded-lg border-2 border-blue-200 shadow-sm">
+            <h4 class="font-bold text-gray-800 mb-2">${r.name}</h4>
+            <p class="text-xs text-gray-600 mb-2">${r.description.substring(0, 80)}...</p>
+            <div class="text-xs text-gray-500 mb-3">
+                <p>📊 ${r.criteriaCount} criterios, ${r.levelsCount} niveles</p>
+                <p>🕒 ${new Date(r.modified).toLocaleDateString()}</p>
+                <p>v${r.version} | ${r.origin === 'ai' ? '🤖' : r.origin === 'import' ? '📂' : '✏️'}</p>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="loadSavedRubric('${r.id}')" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-1 px-2 rounded">Cargar</button>
+                <button onclick="duplicateSavedRubric('${r.id}')" class="bg-gray-400 hover:bg-gray-500 text-white text-sm font-bold py-1 px-2 rounded">📋</button>
+                <button onclick="deleteSavedRubric('${r.id}')" class="bg-red-500 hover:bg-red-600 text-white text-sm font-bold py-1 px-2 rounded">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function loadSavedRubric(rubricId) {
+    showMessage('Cargando rúbrica...', 'loading');
+    
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const rubric = JSON.parse(response);
+                if (rubric.error) {
+                    showMessage('Error: ' + rubric.error, 'error');
+                } else {
+                    activeRubric = rubric;
+                    renderRubric();
+                    if(typeof renderGradingRubric === 'function') renderGradingRubric();
+                    showMessage(`Rúbrica "${rubric.name}" cargada para editar y calificar.`, 'success');
+                }
+            } catch (e) {
+                showMessage('Error: ' + e.message, 'error');
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .loadRubricById(rubricId);
+}
+
+function duplicateSavedRubric(rubricId) {
+    const newName = prompt('Nombre para la copia:');
+    if (!newName) return;
+
+    showMessage('Duplicando...', 'loading');
+    
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.error) {
+                showMessage('Error: ' + result.error, 'error');
+            } else {
+                showMessage('Duplicada exitosamente.', 'success');
+                loadSavedRubricsList();
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .duplicateRubric(rubricId, newName);
+}
+
+function deleteSavedRubric(rubricId) {
+    if (!confirm('¿Eliminar permanentemente?')) return;
+
+    showMessage('Eliminando...', 'loading');
+    
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.error) {
+                showMessage('Error: ' + result.error, 'error');
+            } else {
+                showMessage(result.message, 'success');
+                loadSavedRubricsList();
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .deleteRubricById(rubricId);
+}
+</script>

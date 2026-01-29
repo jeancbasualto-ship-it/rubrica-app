@@ -1,0 +1,51 @@
+<script>
+function openEditModal() {
+    if (!activeRubric) {
+        showMessage('No hay rúbrica para editar.', 'error');
+        return;
+    }
+
+    editingRubric = JSON.parse(JSON.stringify(activeRubric));
+    
+    document.getElementById('edit-rubric-name').value = editingRubric.name;
+    document.getElementById('edit-rubric-description').value = editingRubric.description;
+    
+    renderEditLevels();
+    renderEditCriteria();
+    
+    document.getElementById('edit-rubric-modal').classList.add('show');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-rubric-modal').classList.remove('show');
+    editingRubric = null;
+}
+
+function saveEditedRubricChanges() {
+    editingRubric.name = document.getElementById('edit-rubric-name').value.trim();
+    editingRubric.description = document.getElementById('edit-rubric-description').value.trim();
+
+    if (!editingRubric.name) {
+        showMessage('El nombre es obligatorio.', 'error');
+        return;
+    }
+
+    showMessage('Guardando cambios...', 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.error) {
+                showMessage('Error: ' + result.error, 'error');
+            } else {
+                activeRubric = editingRubric;
+                renderRubric();
+                closeEditModal();
+                loadSavedRubricsList();
+                showMessage('Cambios guardados!', 'success');
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .saveEditedRubric(editingRubric);
+}
+</script>

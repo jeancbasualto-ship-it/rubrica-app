@@ -1,0 +1,78 @@
+<script>
+function handleDocumentGeneration(includeAIFeedback) {
+    const courseName = document.getElementById('select-course').value;
+    const studentId = document.getElementById('select-student').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+
+    if (!courseName || !studentId || !evaluationId || !activeRubric) {
+        showMessage('Debe seleccionar curso, estudiante y evaluación.', 'error');
+        return;
+    }
+
+    const student = courses[courseName].students.find(s => s.id === studentId);
+    if (!student) {
+        showMessage('Estudiante no encontrado.', 'error');
+        return;
+    }
+
+    const btn = event.target;
+    btn.disabled = true;
+    showMessage('Generando documento...', 'loading');
+
+    const funcName = includeAIFeedback ? 'createDocWithFeedback' : 'createGradingDoc';
+    const args = [courseName, student.name, evaluationId, activeRubric, currentGrading, currentFinalGrade];
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const docData = JSON.parse(response);
+                if (docData.error) {
+                    showMessage('Error: ' + docData.error, 'error');
+                } else {
+                    showDocumentLinkPopup(docData);
+                }
+            } catch (e) {
+                showMessage(response, response.startsWith('Éxito') ? 'success' : 'error');
+            }
+            btn.disabled = false;
+        })
+        .withFailureHandler(e => {
+            showMessage('Error: ' + e.message, 'error');
+            btn.disabled = false;
+        })
+        [funcName](...args);
+}
+
+function showDocumentLinkPopup(docData) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+    
+    const content = document.createElement('div');
+    content.style.cssText = 'background: white; padding: 30px; border-radius: 12px; max-width: 500px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+    
+    content.innerHTML = `
+        <h3 style="color: #10b981; margin: 0 0 15px 0; font-size: 24px;">✅ Documento Creado</h3>
+        <p style="color: #6b7280; margin-bottom: 20px;">${docData.message || 'El documento se generó correctamente'}</p>
+        <a href="${docData.url}" target="_blank" 
+           style="display: inline-block; background: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 10px; transition: background 0.3s;" 
+           onmouseover="this.style.background='#4338ca'" 
+           onmouseout="this.style.background='#4f46e5'">
+            📄 Abrir Documento
+        </a>
+        <br>
+        <button onclick="this.parentElement.parentElement.remove()" 
+                style="background: #e5e7eb; color: #374151; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+            Cerrar
+        </button>
+    `;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+</script>

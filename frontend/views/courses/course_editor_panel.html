@@ -1,0 +1,162 @@
+<aside id="course-editor-panel" class="fixed right-0 top-0 h-full w-80 bg-white border-l shadow-lg z-50 hidden overflow-auto">
+  <div class="p-4">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold">Agregar / Editar Curso</h3>
+      <button id="close-course-editor" class="text-gray-600 hover:text-gray-800">✕</button>
+    </div>
+
+    <form id="course-editor-form" class="space-y-4">
+      <div>
+        <label for="ce-course-name" class="block text-sm font-medium">Nombre del curso</label>
+        <input id="ce-course-name" name="ce-course-name" type="text" aria-label="Nombre del curso" placeholder="Ej. Matemáticas 1" class="mt-1 w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-200" />
+      </div>
+
+      <!-- Sección de Evaluaciones -->
+      <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+        <label class="block text-sm font-medium text-indigo-900 mb-2">Evaluaciones</label>
+        <div id="ce-eval-list" class="space-y-2 mb-2 max-h-40 overflow-y-auto">
+            <!-- Dynamic list -->
+        </div>
+        <div class="flex gap-2">
+            <input id="ce-new-eval" type="text" placeholder="Nueva evaluación (ej. Prueba 1)" class="flex-1 p-2 text-sm border rounded" />
+            <button type="button" id="ce-add-eval-btn" class="bg-indigo-600 text-white px-3 rounded text-sm font-bold">+</button>
+        </div>
+      </div>
+
+      <div>
+        <label for="ce-students" class="block text-sm font-medium">Estudiantes (una por línea)</label>
+        <textarea id="ce-students" name="ce-students" aria-label="Lista de estudiantes" rows="6" placeholder="Ana\nLuis\nMaría" class="mt-1 w-full p-2 border rounded-lg"></textarea>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button type="button" id="proto-cancel" class="bg-gray-200 px-3 py-2 rounded-lg">Cancelar</button>
+        <button type="submit" id="proto-save" class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Guardar curso</button>
+      </div>
+    </form>
+
+    <hr class="my-4" />
+    <h5 class="text-sm text-gray-500 mb-2">Cursos recientes</h5>
+    <ul id="proto-recent-list" class="space-y-2 text-sm">
+      <li class="p-2 bg-gray-50 rounded">Matemáticas 1 · 25 estudiantes</li>
+    </ul>
+  </div>
+
+  <script>
+    // Panel behavior: open/close and submit handling
+    (function(){
+      const panel = document.getElementById('course-editor-panel');
+      const closeBtn = document.getElementById('close-course-editor');
+      const cancelBtn = document.getElementById('proto-cancel');
+      const form = document.getElementById('course-editor-form');
+      
+      // Evaluation Management
+      let currentEvaluations = [];
+
+      function renderEvaluations() {
+        const container = document.getElementById('ce-eval-list');
+        if(!container) return;
+        
+        if(currentEvaluations.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-400 italic">Sin evaluaciones definidas.</p>';
+            return;
+        }
+
+        container.innerHTML = currentEvaluations.map((ev, idx) => `
+            <div class="flex items-center justify-between bg-white p-2 rounded border text-sm">
+                <span>${ev.name}</span>
+                <button type="button" onclick="window.removeEvaluation(${idx})" class="text-red-500 hover:text-red-700 font-bold">×</button>
+            </div>
+        `).join('');
+      }
+
+      window.removeEvaluation = function(idx) {
+        currentEvaluations.splice(idx, 1);
+        renderEvaluations();
+      };
+
+      const addEvalBtn = document.getElementById('ce-add-eval-btn');
+      if(addEvalBtn) {
+        addEvalBtn.addEventListener('click', () => {
+             const input = document.getElementById('ce-new-eval');
+             const val = input.value.trim();
+             if(val) {
+                 const id = 'eval_' + Date.now() + '_' + Math.floor(Math.random()*1000); // Generar ID único
+                 currentEvaluations.push({ id: id, name: val });
+                 input.value = '';
+                 renderEvaluations();
+             }
+        });
+      }
+
+      function close(){ panel.classList.add('hidden'); }
+      
+      function open(){ 
+          panel.classList.remove('hidden'); 
+          // Load data from editingCourse if available
+          const courseName = window.editingCourse;
+          if(courseName && window.courses && window.courses[courseName]) {
+             const c = window.courses[courseName];
+             document.getElementById('ce-course-name').value = c.name;
+             document.getElementById('ce-students').value = c.students.map(s => s.name).join('\n');
+             
+             // Load Evaluations
+             if(c.evaluations && Array.isArray(c.evaluations)) {
+                 currentEvaluations = [...c.evaluations];
+             } else if(c.rubrics) {
+                 // Migrate format
+                 currentEvaluations = Object.keys(c.rubrics).map(key => ({ id: key, name: key }));
+             } else {
+                 currentEvaluations = [];
+             }
+          } else {
+              // Reset for new
+              document.getElementById('ce-course-name').value = '';
+              document.getElementById('ce-students').value = '';
+              currentEvaluations = [];
+          }
+          renderEvaluations();
+      }
+
+      if(closeBtn) closeBtn.addEventListener('click', close);
+      if(cancelBtn) cancelBtn.addEventListener('click', close);
+
+      // Expose open/close for global use
+      window.openCourseEditor = open;
+      window.closeCourseEditor = close;
+
+      if(form){
+        form.addEventListener('submit', function(e){
+          e.preventDefault();
+          const name = document.getElementById('ce-course-name').value.trim();
+          const students = document.getElementById('ce-students').value.trim().split(/\r?\n/).filter(Boolean);
+
+          // Update logic
+          if(typeof window.updateCourse === 'function' && window.editingCourse){
+              // Inject logic to handle evaluations inside updateCourse context?
+              // Better: Override the values in the hidden legacy modal which updateCourse reads from
+              // OR modify app_logic updateCourse to accept arguments.
+              
+              // Hacky but consistent with current arch:
+              // We populate the legacy hidden modal fields
+              document.getElementById('course-name').value = name;
+              document.getElementById('student-list').value = students.join('\n');
+              
+              // CRITICAL: Pass evaluations to the global scope or attaching to DOM to be read
+              window.tempEvaluations = currentEvaluations; // Passing via global temp
+              
+              window.updateCourse(); 
+              // updateCourse in app_logic needs to know about window.tempEvaluations
+          } else if (typeof window.addCourse === 'function') {
+               // Similar logic for creation
+               // ...
+          }
+          
+          // Since updateCourse logic in app_logic.js reads DOM elements of #add-course-modal, 
+          // we need to modify app_logic.js to read `window.tempEvaluations` as well.
+          
+          close();
+        });
+      }
+    })();
+  </script>
+</aside>

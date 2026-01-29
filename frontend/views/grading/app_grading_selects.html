@@ -1,0 +1,472 @@
+<script>
+function loadCoursesForGrading() {
+    const select = document.getElementById('select-course');
+    if(!select) return;
+    
+    // Si no hay cursos cargados, intentar cargarlos
+    const courseNames = typeof courses !== 'undefined' ? Object.keys(courses) : [];
+    
+    select.innerHTML = '<option value="">-- Seleccionar --</option>' +
+        courseNames.map(name => `<option value="${name}">${name}</option>`).join('');
+    
+    // Resetear otros selects
+    document.getElementById('select-student').innerHTML = '<option value="">-- Seleccionar Curso --</option>';
+}
+
+function loadRubricsForSelector() {
+    const select = document.getElementById('select-rubric-for-course');
+    if(!select) return;
+    
+    // Conservar selección actual si es posible
+    const currentVal = select.value;
+
+    let html = '<option value="">-- Seleccionar Rúbrica --</option>';
+
+    if(typeof savedRubrics !== 'undefined') {
+        savedRubrics.forEach(r => {
+            html += `<option value="${r.id}">${r.name}</option>`;
+        });
+    }
+    select.innerHTML = html;
+    
+    // Intentar restaurar valor
+    if(currentVal) select.value = currentVal;
+}
+
+function handleRubricSelectionChange() {
+    // Nueva lógica: Selección directa auto-asigna
+    const courseName = document.getElementById('select-course').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+    const rubricId = document.getElementById('select-rubric-for-course').value;
+
+    if (!courseName || !evaluationId) return;
+
+    // VERIFICACIÓN DE SEGURIDAD
+    const currentAssignedId = courses[courseName].rubrics ? courses[courseName].rubrics[evaluationId] : null;
+    
+    // Solo validar si estamos CAMBIANDO una asignación existente (y no es la misma)
+    if (currentAssignedId && rubricId && currentAssignedId !== rubricId) {
+        
+        // 1. Verificar si hay calificaciones
+        const hasGrades = courses[courseName].grades && 
+                          courses[courseName].grades[evaluationId] && 
+                          Object.keys(courses[courseName].grades[evaluationId]).length > 0;
+        
+        if (hasGrades) {
+            showMessage('⛔ BLOQUEADO: Esta evaluación ya tiene calificaciones guardada con la rúbrica anterior. No se puede cambiar la rúbrica para evitar inconsistencias.', 'error');
+            // Revertir selección
+            document.getElementById('select-rubric-for-course').value = currentAssignedId;
+            return;
+        }
+
+        // 2. Advertencia si no hay notas
+        if(!confirm('⚠️ ADVERTENCIA: Esta evaluación ya tiene una rúbrica asignada. ¿Estás seguro de cambiarla?')) {
+            document.getElementById('select-rubric-for-course').value = currentAssignedId;
+            return;
+        }
+    }
+
+    if(!courses[courseName].rubrics) courses[courseName].rubrics = {};
+    
+    if (rubricId) {
+        courses[courseName].rubrics[evaluationId] = rubricId;
+        // Cargar inmediatamente
+        loadSavedRubric(rubricId); 
+        showMessage('Rúbrica seleccionada y asignada.', 'success');
+        
+        // Guardar asignación
+        saveCourseRubricUpdate(courseName); 
+        
+    } else {
+        // Desasignar (solo permitido si no hay notas, misma logica apply implicitamente arriba si current era null? no)
+        // Check seguridad para desasignar
+        if (currentAssignedId) {
+             const hasGrades = courses[courseName].grades && courses[courseName].grades[evaluationId] && Object.keys(courses[courseName].grades[evaluationId]).length > 0;
+             if(hasGrades) {
+                 showMessage('⛔ No se puede quitar la rúbrica mientras existan calificaciones.', 'error');
+                 document.getElementById('select-rubric-for-course').value = currentAssignedId;
+                 return;
+             }
+        }
+        
+        delete courses[courseName].rubrics[evaluationId];
+        activeRubric = null;
+        renderGradingRubric();
+        saveCourseRubricUpdate(courseName);
+    }
+}
+
+function saveCourseRubricUpdate(courseName) {
+    // Helper para guardar solo el curso sin bloquear toda la UI
+    // Usamos saveCourse existente o creamos uno parcial si fuera necesario.
+    // Usaremos saveCourse pero silencioso
+    google.script.run.saveCourse(courses[courseName]);
+}
+
+function assignRubricToEvaluation() {
+    const courseName = document.getElementById('select-course').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+    const rubricId = document.getElementById('select-rubric-for-course').value;
+
+    if (!courseName || !evaluationId) {
+        showMessage('Selecciona curso y evaluación primero.', 'error');
+        return;
+    }
+
+    if (rubricId) {
+        if(!courses[courseName].rubrics) courses[courseName].rubrics = {};
+        courses[courseName].rubrics[evaluationId] = rubricId;
+        
+        // Cargar esa rúbrica como activa si no lo está
+        loadSavedRubric(rubricId); // Esto es asíncrono, pero actualiza activeRubric
+        showMessage(`Rúbrica asignada a ${evaluationId}.`, 'success');
+        
+        // Guardar el curso actualizado (solo rubrics)
+        // TODO: Implementar saveCourseRubricUpdate si fuera necesario optimizar
+    } else {
+        if(courses[courseName].rubrics) delete courses[courseName].rubrics[evaluationId];
+    }
+}
+
+function loadStudentsAndResetGrading() {
+    const courseName = document.getElementById('select-course').value;
+    const studentSelect = document.getElementById('select-student');
+    const evalSelect = document.getElementById('select-evaluation');
+    
+    // Resetear UI
+    document.getElementById('grading-rubric-display').innerHTML = '<p class="text-center text-gray-400 py-8">Selecciona evaluación y estudiante.</p>';
+    document.getElementById('final-score').textContent = '0 / 0';
+    document.getElementById('final-grade').textContent = '--';
+    document.getElementById('btn-save-grade').disabled = true;
+
+    if (!courseName || !courses[courseName]) {
+        studentSelect.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
+        if(evalSelect) evalSelect.innerHTML = '<option value="">-- Seleccionar Curso --</option>';
+        return;
+    }
+
+    // Poblar evaluaciones
+    // Poblar evaluaciones
+    if(evalSelect) {
+        const evals = courses[courseName].evaluations || [];
+        let optionsHtml = '<option value="">-- Seleccionar --</option>';
+        
+        if(evals.length > 0) {
+            optionsHtml += evals.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+        }
+        
+        // Agregar opción siempre visible de crear nueva
+        optionsHtml += '<option value="CREATE_NEW_EVAL" class="font-bold text-indigo-600">+ crear nueva evaluación...</option>';
+        
+        evalSelect.innerHTML = optionsHtml;
+    }
+
+    // Poblar estudiantes
+    studentSelect.innerHTML = '<option value="">-- Seleccionar Estudiante --</option>' +
+        courses[courseName].students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+    // Asegurar que las rúbricas estén cargadas en el selector
+    loadRubricsForSelector();
+}
+
+// Variables globales para manejo del modal
+let pendingEvalCreation = false;
+
+function handleEvaluationChange() {
+    const courseName = document.getElementById('select-course').value;
+    const evalSelect = document.getElementById('select-evaluation');
+    const evaluationId = evalSelect.value;
+    
+    if(!courseName) return;
+
+    // Manejar creación rápida con MODAL
+    if(evaluationId === 'CREATE_NEW_EVAL') {
+        // Abrir modal
+        const modal = document.getElementById('create-eval-modal');
+        const input = document.getElementById('new-eval-name-input');
+        if(modal && input) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex'); // Usar flex para centrar
+            input.value = '';
+            input.focus();
+            
+            // Hack para enter key
+            input.onkeydown = (e) => { if(e.key === 'Enter') confirmCreateEval(); };
+        }
+        // Dejar el select en blanco visualmente mientras se crea
+        evalSelect.value = ""; 
+        return;
+    }
+    
+    if(!evaluationId) return;
+    
+    // 1. Verificar si hay rúbrica asignada para esta evaluación
+    const rubricId = courses[courseName].rubrics ? courses[courseName].rubrics[evaluationId] : null;
+    
+    // Sincronizar el selector visual
+    const rubricSelect = document.getElementById('select-rubric-for-course');
+    if(rubricSelect) rubricSelect.value = rubricId || "";
+
+    if(rubricId) {
+        // Cargar rúbrica
+        loadSavedRubric(rubricId); 
+    } else {
+        // No hay rúbrica
+        activeRubric = null;
+        renderGradingRubric();
+    }
+
+    // 2. Cargar Calificaciones del Backend
+    showMessage('Cargando calificaciones...', 'loading');
+    google.script.run
+        .withSuccessHandler(grades => {
+            try {
+                const parsedGrades = JSON.parse(grades);
+                // Guardar en memoria: courses[name].grades[evalId] = { studentId: gradeObj }
+                if(!courses[courseName].grades) courses[courseName].grades = {};
+                
+                // Convertir array a mapa por studentId
+                const gradeMap = {};
+                parsedGrades.forEach(g => {
+                    gradeMap[g.studentId] = g;
+                });
+                courses[courseName].grades[evaluationId] = gradeMap;
+                
+                showMessage('Calificaciones cargadas.', 'success');
+                
+                // Si ya había estudiante seleccionado, refrescar
+                const currentStudentId = document.getElementById('select-student').value;
+                if(currentStudentId) handleStudentChange();
+                
+            } catch(e) { showMessage('Error procesando notas: '+e.message, 'error'); }
+        })
+        .withFailureHandler(e => showMessage('Error cargando notas: '+e.message, 'error'))
+        .loadGradesFromSheet(courseName, evaluationId);
+}
+
+// Funciones para el Modal de Crear Evaluación
+function closeCreateEvalModal() {
+    document.getElementById('create-eval-modal').classList.add('hidden');
+    document.getElementById('create-eval-modal').classList.remove('flex');
+}
+
+function confirmCreateEval() {
+    const input = document.getElementById('new-eval-name-input');
+    const newName = input.value.trim();
+    const courseName = document.getElementById('select-course').value;
+    
+    if(!newName) {
+        showMessage('El nombre no puede estar vacío', 'error');
+        return;
+    }
+    
+    closeCreateEvalModal();
+    
+    const newId = 'eval_' + Date.now();
+    
+    // Agregar al curso localmente
+    if(!courses[courseName].evaluations) courses[courseName].evaluations = [];
+    courses[courseName].evaluations.push({ id: newId, name: newName });
+    
+    // Guardar curso en segundo plano
+    showMessage('Creando evaluación...', 'loading');
+    google.script.run
+        .withSuccessHandler(() => showMessage('Evaluación creada.', 'success'))
+        .saveCourse(courses[courseName]); // Llama a save backend
+    
+    // Refrescar lista y seleccionar el nuevo
+    loadStudentsAndResetGrading(); 
+    
+    // Seleccionar el recién creado
+    setTimeout(() => {
+        const updatedSelect = document.getElementById('select-evaluation');
+        if(updatedSelect) {
+            updatedSelect.value = newId;
+            handleEvaluationChange(); // Trigger logic normal (cargar notas vacías)
+        }
+    }, 150);
+}
+
+function handleStudentChange() {
+    // Resetear estado visual de calificación (toggle ojos, selecciones anteriores)
+    if(typeof resetGradingState === 'function') {
+        resetGradingState();
+    }
+
+    const courseName = document.getElementById('select-course').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+    const studentId = document.getElementById('select-student').value;
+    
+    if(!courseName || !studentId) {
+        resetGrading();
+        return;
+    }
+    
+    // Buscar si hay nota guardada en memoria
+    const courseGrades = courses[courseName].grades || {};
+    const evalGrades = courseGrades[evaluationId] || {};
+    const studentGrade = evalGrades[studentId];
+    
+    if(studentGrade) {
+        // Cargar nota existente
+        currentGrading = studentGrade.scores || {};
+        currentFinalGrade = studentGrade.finalGrade;
+        
+        // Cargar Feedback
+        const feedbackArea = document.getElementById('feedback-text');
+        if(feedbackArea) feedbackArea.value = studentGrade.feedback || '';
+
+        renderGradingRubric(); // Re-render con celdas seleccionadas
+        updateFinalScores();
+        showMessage('Calificación existente cargada.', 'info');
+        
+        // Habilitar botones de documentos
+        const pdfBtn = document.getElementById('doc-pdf-btn');
+        if(pdfBtn) pdfBtn.disabled = false;
+        const docBtn = document.getElementById('doc-word-btn');
+        if(docBtn) docBtn.disabled = false;
+        
+    } else {
+        // Nueva calificación
+        resetGrading();
+    }
+    
+    document.getElementById('btn-save-grade').disabled = false;
+}
+
+function resetGrading() {
+    currentGrading = {};
+    currentFinalGrade = '1.0';
+    
+    const feedbackArea = document.getElementById('feedback-text');
+    if(feedbackArea) feedbackArea.value = '';
+    
+    const pdfBtn = document.getElementById('doc-pdf-btn');
+    if(pdfBtn) pdfBtn.disabled = true;
+    const docBtn = document.getElementById('doc-word-btn');
+    if(docBtn) docBtn.disabled = true;
+
+    renderGradingRubric();
+    updateFinalScores();
+}
+
+function saveCurrentGrade() {
+    const courseName = document.getElementById('select-course').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+    const studentId = document.getElementById('select-student').value;
+    
+    if(!courseName || !evaluationId || !studentId) {
+        showMessage('Faltan datos para guardar.', 'error');
+        return;
+    }
+    
+    const btn = document.getElementById('btn-save-grade');
+    btn.disabled = true;
+    showMessage('Guardando...', 'loading');
+    
+    const feedbackText = document.getElementById('feedback-text') ? document.getElementById('feedback-text').value : '';
+
+    const gradingData = {
+        scores: currentGrading,
+        finalGrade: currentFinalGrade,
+        totalScore: document.getElementById('final-score').textContent,
+        feedback: feedbackText
+    };
+    
+    google.script.run
+        .withSuccessHandler(res => {
+            const result = JSON.parse(res);
+            if(result.success) {
+                showMessage('Calificación guardada exitosamente.', 'success');
+                // Actualizar memoria local
+                if(!courses[courseName].grades) courses[courseName].grades = {};
+                if(!courses[courseName].grades[evaluationId]) courses[courseName].grades[evaluationId] = {};
+                
+                courses[courseName].grades[evaluationId][studentId] = {
+                    studentId: studentId,
+                    ...gradingData
+                };
+                
+                // Habilitar Botones
+                const pdfBtn = document.getElementById('doc-pdf-btn');
+                if(pdfBtn) pdfBtn.disabled = false;
+                const docBtn = document.getElementById('doc-word-btn');
+                if(docBtn) docBtn.disabled = false;
+
+            } else {
+                showMessage('Error: ' + result.error, 'error');
+            }
+            btn.disabled = false;
+        })
+        .withFailureHandler(e => {
+            showMessage('Error de red: ' + e.message, 'error');
+            btn.disabled = false;
+        })
+        .saveGradeToSheet(courseName, studentId, evaluationId, gradingData);
+}
+
+function generatePDFReport() {
+    _generateReport('pdf');
+}
+
+function generateDocReport() {
+    _generateReport('doc');
+}
+
+function _generateReport(type) {
+    // Recopilar datos
+    const courseName = document.getElementById('select-course').value;
+    const evalSelect = document.getElementById('select-evaluation');
+    const studentSelect = document.getElementById('select-student');
+    const feedback = document.getElementById('feedback-text').value;
+    
+    const contextData = {
+        courseName: courseName,
+        evaluationName: evalSelect.options[evalSelect.selectedIndex].text,
+        studentName: studentSelect.options[studentSelect.selectedIndex].text,
+        finalGrade: currentFinalGrade,
+        totalScore: document.getElementById('final-score').textContent,
+        feedback: feedback,
+        rubric: activeRubric,
+        scores: currentGrading 
+    };
+    
+    if(!activeRubric) {
+        showMessage('Error: No hay rúbrica activa.', 'error');
+        return;
+    }
+    
+    showMessage(`Generando ${type.toUpperCase()}...`, 'loading');
+    const btnId = type === 'pdf' ? 'doc-pdf-btn' : 'doc-word-btn';
+    const btn = document.getElementById(btnId);
+    if(btn) btn.disabled = true;
+    
+    const backendFunc = type === 'pdf' ? 'generateStudentReportPDF' : 'generateStudentReportDoc';
+
+    google.script.run
+        .withSuccessHandler(res => {
+            const result = JSON.parse(res);
+            if(result.success) {
+                // UX Change: No auto-popup. Show link button.
+                const icon = type === 'pdf' ? '📄' : '📝';
+                const msg = `
+                    <div class="flex flex-col gap-2">
+                        <span>${type.toUpperCase()} generado correctamente.</span>
+                        <a href="${result.url}" target="_blank" style="display:inline-block; background-color:#4F46E5; color:white; padding:8px 16px; border-radius:4px; text-decoration:none; font-weight:bold; margin-top:5px;">
+                            ${icon} ABRIR AHORA
+                        </a>
+                    </div>
+                `;
+                showMessage(msg, 'success');
+            } else {
+                showMessage('Error servidor: ' + result.error, 'error');
+            }
+            if(btn) btn.disabled = false;
+        })
+        .withFailureHandler(e => {
+            showMessage('Error red: ' + e.message, 'error');
+            if(btn) btn.disabled = false;
+        })
+        [backendFunc](contextData);
+}
+</script>

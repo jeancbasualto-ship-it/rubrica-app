@@ -1,0 +1,57 @@
+<script>
+function renderRubric() {
+    if (!activeRubric) {
+        document.getElementById('rubric-display').innerHTML = '<p class="text-gray-500 italic">No hay rúbrica activa.</p>';
+        document.getElementById('export-rubric-btn').disabled = true;
+        document.getElementById('edit-rubric-btn').disabled = true;
+        return;
+    }
+
+    const display = document.getElementById('rubric-display');
+    let table = '<table class="min-w-full border-collapse border border-gray-300 text-sm">';
+    
+    table += '<thead><tr class="bg-indigo-100"><th class="border border-gray-300 p-3 text-left font-bold">Criterio</th>';
+    activeRubric.levels.forEach(level => {
+        table += `<th class="border border-gray-300 p-3 text-center font-bold">${level.name}<br><span class="text-xs">(${level.points} pts)</span></th>`;
+    });
+    table += '</tr></thead><tbody>';
+    
+    activeRubric.criteria.forEach(criterion => {
+        table += `<tr><td class="border border-gray-300 p-3 font-semibold bg-gray-50">${criterion.name}<br><span class="text-xs text-gray-600">Max: ${criterion.max_points} pts</span></td>`;
+        activeRubric.levels.forEach(level => {
+            const desc = criterion.level_descriptions.find(d => d.level_id === level.id);
+            table += `<td class="border border-gray-300 p-3 text-xs">${desc ? desc.description : 'N/A'}</td>`;
+        });
+        table += '</tr>';
+    });
+    
+    table += '</tbody></table>';
+    table = `<div class="mb-4"><h4 class="text-lg font-bold">${activeRubric.name}</h4><p class="text-sm text-gray-600">${activeRubric.description}</p></div>` + table;
+    
+    display.innerHTML = table;
+    document.getElementById('export-rubric-btn').disabled = false;
+    document.getElementById('edit-rubric-btn').disabled = false;
+}
+
+function handleExportRubric() {
+    if (!activeRubric) {
+        showMessage('No hay rúbrica para exportar.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('export-rubric-btn');
+    btn.disabled = true;
+    showMessage('Exportando a Sheets...', 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            showMessage(response, response.startsWith('Éxito') ? 'success' : 'error');
+            btn.disabled = false;
+        })
+        .withFailureHandler(err => {
+            showMessage('Error: ' + err.message, 'error');
+            btn.disabled = false;
+        })
+        .exportRubric(activeRubric, activeRubric.name);
+}
+</script>

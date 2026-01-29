@@ -1,0 +1,44 @@
+<script>
+let coursePendingDelete = null;
+
+function confirmDeleteCourse(name) {
+    // Abrir modal de confirmación en vez de confirm() nativo
+    coursePendingDelete = name;
+    const txt = document.getElementById('delete-course-text');
+    if (txt) txt.textContent = `¿Eliminar el curso "${name}" de Drive y localmente? Esto moverá el archivo a la papelera.`;
+    const modal = document.getElementById('delete-course-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeDeleteCourseModal(){
+    coursePendingDelete = null;
+    const modal = document.getElementById('delete-course-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function deleteCourseConfirmed(){
+    const name = coursePendingDelete;
+    if (!name) return closeDeleteCourseModal();
+    closeDeleteCourseModal();
+    showMessage(`Eliminando curso "${name}"...`, 'loading');
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const res = JSON.parse(response);
+                if (res.error) {
+                    showMessage('Error al eliminar curso: ' + res.error, 'error');
+                } else {
+                    delete courses[name];
+                    showMessage('Curso eliminado.', 'success');
+                    renderCourseList();
+                }
+            } catch (e) {
+                delete courses[name];
+                showMessage('Curso eliminado.', 'success');
+                renderCourseList();
+            }
+        })
+        .withFailureHandler(err => showMessage('Error al eliminar curso: ' + err.message, 'error'))
+        .deleteCourse(name);
+}
+</script>

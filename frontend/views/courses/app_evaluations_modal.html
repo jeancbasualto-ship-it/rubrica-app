@@ -1,0 +1,154 @@
+<div id="evaluations-manager-modal" class="modal hidden fixed inset-0 items-center justify-center z-[60]">
+    <div class="bg-black/40 absolute inset-0" onclick="closeEvaluationsManager()"></div>
+    <div class="modal-content relative z-10 bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 flex flex-col max-h-[90vh]">
+        
+        <div class="flex justify-between items-center mb-6 border-b pb-4">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">⚙️ Gestión de Evaluaciones</h2>
+                <p class="text-sm text-gray-500">Administra las evaluaciones y sus rúbricas asignadas.</p>
+            </div>
+            <button onclick="closeEvaluationsManager()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+
+        <!-- Selector de Curso para el Manager -->
+        <div class="mb-6">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Selecciona un Curso:</label>
+            <select id="manager-course-select" onchange="renderEvaluationsList()" class="w-full p-2 border rounded-lg bg-gray-50">
+                <option value="">-- Seleccionar --</option>
+            </select>
+        </div>
+
+        <!-- Lista de Evaluaciones -->
+        <div class="flex-1 overflow-y-auto min-h-[200px] mb-4">
+            <table class="w-full text-sm text-left text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                    <tr>
+                        <th class="px-4 py-3 rounded-tl-lg">Nombre Evaluación</th>
+                        <th class="px-4 py-3">Rúbrica Asignada</th>
+                        <th class="px-4 py-3 text-right rounded-tr-lg">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="evaluations-list-body">
+                    <tr><td colspan="3" class="px-4 py-8 text-center italic">Selecciona un curso para ver sus evaluaciones.</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex justify-end pt-4 border-t">
+            <button onclick="closeEvaluationsManager()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openEvaluationsManager() {
+    const modal = document.getElementById('evaluations-manager-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    // Cargar cursos
+    const select = document.getElementById('manager-course-select');
+    const courseNames = typeof courses !== 'undefined' ? Object.keys(courses) : [];
+    select.innerHTML = '<option value="">-- Seleccionar Curso --</option>' + 
+        courseNames.map(c => `<option value="${c}">${c}</option>`).join('');
+    
+    // Si ya estamos en "Calificar" con un curso seleccionado, pre-seleccionarlo
+    const currentGradingCourse = document.getElementById('select-course')?.value;
+    if(currentGradingCourse && courses[currentGradingCourse]) {
+        select.value = currentGradingCourse;
+        renderEvaluationsList();
+    }
+}
+
+function closeEvaluationsManager() {
+    const modal = document.getElementById('evaluations-manager-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function renderEvaluationsList() {
+    const courseName = document.getElementById('manager-course-select').value;
+    const container = document.getElementById('evaluations-list-body');
+    
+    if(!courseName || !courses[courseName]) {
+        container.innerHTML = '<tr><td colspan="3" class="px-4 py-8 text-center italic">Selecciona un curso válido.</td></tr>';
+        return;
+    }
+
+    const evals = courses[courseName].evaluations || [];
+    const rubricsAssigned = courses[courseName].rubrics || {};
+
+    if(evals.length === 0) {
+        container.innerHTML = '<tr><td colspan="3" class="px-4 py-8 text-center italic text-amber-600">Este curso no tiene evaluaciones creadas.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    evals.forEach(ev => {
+        const rubricId = rubricsAssigned[ev.id];
+        let rubricName = '<span class="text-gray-400 italic">-- Sin asignar --</span>';
+        
+        if(rubricId) {
+            // Buscar nombre en savedRubrics global si existe
+            const r = typeof savedRubrics !== 'undefined' ? savedRubrics.find(sr => sr.id === rubricId) : null;
+            rubricName = r ? `<span class="text-indigo-600 font-medium">📄 ${r.name}</span>` : `<span class="text-red-500">⚠️ ID: ${rubricId} (No encontrada)</span>`;
+        }
+
+        html += `
+            <tr class="bg-white border-b hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-3 font-medium text-gray-900">
+                    <input type="text" value="${ev.name}" 
+                        onchange="renameEvaluation('${courseName}', '${ev.id}', this.value)"
+                        class="bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none hover:border-gray-300 w-full transition-colors"
+                    >
+                </td>
+                <td class="px-4 py-3">${rubricName}</td>
+                <td class="px-4 py-3 text-right space-x-2">
+                    <button onclick="deleteEvaluation('${courseName}', '${ev.id}')" class="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="Eliminar Evaluación">
+                        🗑️
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function renameEvaluation(courseName, evalId, newName) {
+    if(!newName.trim()) return;
+    const ev = courses[courseName].evaluations.find(e => e.id === evalId);
+    if(ev) {
+        ev.name = newName.trim();
+        saveCourseUpdate(courseName); // Guardar cambios
+        showMessage('Evaluación renombrada.', 'success');
+    }
+}
+
+function deleteEvaluation(courseName, evalId) {
+    if(!confirm('¿Estás seguro de eliminar esta evaluación? \n\n⚠️ Se perderán todas las calificaciones asociadas a ella permanente.')) return;
+    
+    // 1. Eliminar de la lista
+    courses[courseName].evaluations = courses[courseName].evaluations.filter(e => e.id !== evalId);
+    
+    // 2. Eliminar asignación de rúbrica
+    if(courses[courseName].rubrics && courses[courseName].rubrics[evalId]) {
+        delete courses[courseName].rubrics[evalId];
+    }
+    
+    // 3. Eliminar calificaciones
+    if(courses[courseName].grades && courses[courseName].grades[evalId]) {
+        delete courses[courseName].grades[evalId];
+    }
+    
+    saveCourseUpdate(courseName);
+    renderEvaluationsList();
+    showMessage('Evaluación eliminada.', 'success');
+}
+
+// Función helper para guardar curso entero tras cambios estructurales
+function saveCourseUpdate(courseName) {
+    const course = courses[courseName];
+    google.script.run.saveCourse(course);
+}
+</script>

@@ -1,0 +1,1154 @@
+<script>
+// ====================================================================
+// SISTEMA DE GESTIÓN DE RÚBRICAS v2 - COMPLETO
+// Incluye: Guardado, Asignación, Edición, Calificación, Feedback IA
+// ====================================================================
+
+// ====================================================================
+// ESTADO GLOBAL
+// ====================================================================
+const PASSING_PERCENTAGE = 0.6;
+const MIN_GRADE = 1.0;
+const PASS_GRADE = 4.0;
+const MAX_GRADE = 7.0;
+
+let activeRubric = null;
+let courses = {};
+let currentGrading = {};
+let currentFinalGrade = '1.0';
+let selectedFile = null;
+let savedRubrics = [];
+let editingRubric = null;
+let editingCourse = null;
+
+// ====================================================================
+// UTILIDADES Y UX
+// ====================================================================
+
+function showMessage(message, type) {
+    const area = document.getElementById('message-area');
+    let baseClasses = 'mb-4 p-3 rounded-lg text-sm transition-all duration-300 ';
+
+    if (type === 'success') baseClasses += 'bg-green-100 text-green-700 border border-green-300';
+    else if (type === 'error') baseClasses += 'bg-red-100 text-red-700 border border-red-300';
+    else if (type === 'info') baseClasses += 'bg-blue-100 text-blue-700 border border-blue-300';
+    else if (type === 'loading') {
+        baseClasses += 'bg-yellow-100 text-yellow-700 border border-yellow-300';
+        message = `<div class="flex items-center"><svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>${message}</div>`;
+    }
+
+    area.className = baseClasses;
+    area.innerHTML = message;
+    area.classList.remove('hidden');
+
+    if (type !== 'loading') {
+        setTimeout(() => area.classList.add('hidden'), 5000);
+    }
+}
+
+// ====================================================================
+// FASE 1: GUARDADO Y CARGA DE RÚBRICAS
+// ====================================================================
+
+function loadSavedRubricsList() {
+    const container = document.getElementById('saved-rubrics-container');
+    container.innerHTML = '<p class="text-gray-500 italic col-span-full">Cargando...</p>';
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                savedRubrics = JSON.parse(response);
+                renderSavedRubricsList();
+            } catch (e) {
+                showMessage('Error: ' + e.message, 'error');
+                container.innerHTML = '<p class="text-red-500 col-span-full">Error al cargar.</p>';
+            }
+        })
+        .withFailureHandler(err => {
+            showMessage('Error: ' + err.message, 'error');
+            container.innerHTML = '<p class="text-red-500 col-span-full">Error de conexión.</p>';
+        })
+        .listSavedRubrics();
+}
+
+function renderSavedRubricsList() {
+    const container = document.getElementById('saved-rubrics-container');
+    
+    if (savedRubrics.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 italic col-span-full">No hay rúbricas guardadas.</p>';
+        return;
+    }
+
+    container.innerHTML = savedRubrics.map(r => `
+        <div class="rubric-card bg-white p-4 rounded-lg border-2 border-blue-200 shadow-sm">
+            <h4 class="font-bold text-gray-800 mb-2">${r.name}</h4>
+            <p class="text-xs text-gray-600 mb-2">${r.description.substring(0, 80)}...</p>
+            <div class="text-xs text-gray-500 mb-3">
+                <p>📊 ${r.criteriaCount} criterios, ${r.levelsCount} niveles</p>
+                <p>🕒 ${new Date(r.modified).toLocaleDateString()}</p>
+                <p>v${r.version} | ${r.origin === 'ai' ? '🤖' : r.origin === 'import' ? '📂' : '✏️'}</p>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="loadSavedRubric('${r.id}')" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-1 px-2 rounded">Cargar</button>
+                <button onclick="duplicateSavedRubric('${r.id}')" class="bg-gray-400 hover:bg-gray-500 text-white text-sm font-bold py-1 px-2 rounded">📋</button>
+                <button onclick="deleteSavedRubric('${r.id}')" class="bg-red-500 hover:bg-red-600 text-white text-sm font-bold py-1 px-2 rounded">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function loadSavedRubric(rubricId) {
+    showMessage('Cargando rúbrica...', 'loading');
+    
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const rubric = JSON.parse(response);
+                if (rubric.error) {
+                    showMessage('Error: ' + rubric.error, 'error');
+                } else {
+                    activeRubric = rubric;
+                    renderRubric();
+                    showMessage(`Rúbrica "${rubric.name}" cargada.`, 'success');
+                }
+            } catch (e) {
+                showMessage('Error: ' + e.message, 'error');
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .loadRubricById(rubricId);
+}
+
+function duplicateSavedRubric(rubricId) {
+    const newName = prompt('Nombre para la copia:');
+    if (!newName) return;
+
+    showMessage('Duplicando...', 'loading');
+    
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.error) {
+                showMessage('Error: ' + result.error, 'error');
+            } else {
+                showMessage('Duplicada exitosamente.', 'success');
+                loadSavedRubricsList();
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .duplicateRubric(rubricId, newName);
+}
+
+function deleteSavedRubric(rubricId) {
+    if (!confirm('¿Eliminar permanentemente?')) return;
+
+    showMessage('Eliminando...', 'loading');
+    
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.error) {
+                showMessage('Error: ' + result.error, 'error');
+            } else {
+                showMessage(result.message, 'success');
+                loadSavedRubricsList();
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .deleteRubricById(rubricId);
+}
+
+function autoSaveRubric(rubric, origin = 'ai') {
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.success && activeRubric) {
+                activeRubric.id = result.id;
+                loadSavedRubricsList();
+            }
+        })
+        .withFailureHandler(err => console.error('Error auto-guardando:', err))
+        .saveRubricToDrive(rubric, origin);
+}
+
+// ====================================================================
+// GENERACIÓN E IMPORTACIÓN
+// ====================================================================
+
+function handleGenerateRubric() {
+    const prompt = document.getElementById('ai-prompt').value.trim();
+    if (!prompt) {
+        showMessage('Ingresa una descripción de la tarea.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('ai-generate-btn');
+    btn.disabled = true;
+    showMessage('Generando rúbrica con IA...', 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const rubric = JSON.parse(response);
+                if (rubric.error) {
+                    showMessage('Error: ' + rubric.error, 'error');
+                } else {
+                    activeRubric = rubric;
+                    renderRubric();
+                    autoSaveRubric(rubric, 'ai');
+                    showMessage('Rúbrica generada y guardada!', 'success');
+                }
+            } catch (e) {
+                showMessage('Error: ' + e.message, 'error');
+           }
+            btn.disabled = false;
+        })
+        .withFailureHandler(err => {
+            showMessage('Error: ' + err.message, 'error');
+            btn.disabled = false;
+        })
+        .generateRubric(prompt);
+}
+
+function updateFileDisplay(input) {
+    const file = input.files[0];
+    selectedFile = file;
+    const importBtn = document.getElementById('ai-import-btn');
+    
+    if (file) {
+        document.getElementById('file-name-display').textContent = file.name;
+        document.getElementById('selected-file-display').classList.remove('hidden');
+        importBtn.disabled = false;
+        showMessage(`"${file.name}" seleccionado.`, 'info');
+    } else {
+        document.getElementById('file-name-display').textContent = 'N/A';
+        document.getElementById('selected-file-display').classList.add('hidden');
+        importBtn.disabled = true;
+    }
+}
+
+function handleImportRubric() {
+    if (!selectedFile) {
+        showMessage('Selecciona un archivo primero.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('ai-import-btn');
+    btn.disabled = true;
+    showMessage(`Procesando "${selectedFile.name}"...`, 'loading');
+
+    // Visual Loading State en el contenedor principal
+    const display = document.getElementById('rubric-display');
+    if(display) {
+        display.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-indigo-200 animate-pulse">
+                <div class="text-4xl mb-4">🤖📄</div>
+                <h3 class="text-lg font-bold text-gray-700">Analizando documento...</h3>
+                <p class="text-sm text-gray-500">Estamos extrayendo la estructura de tu rúbrica.</p>
+                <div class="mt-4 w-1/2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div class="h-full bg-indigo-500 animate-progress" style="width: 60%"></div>
+                </div>
+            </div>
+        `;
+        display.classList.remove('hidden');
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const arrayBuffer = e.target.result;
+        const byteArray = Array.from(new Uint8Array(arrayBuffer));
+
+        const fileObject = {
+            data: byteArray,
+            name: selectedFile.name,
+            mimeType: selectedFile.type || 'application/octet-stream'
+        };
+
+        google.script.run
+            .withSuccessHandler(response => {
+                try {
+                    const rubric = JSON.parse(response);
+                    if (rubric.error) {
+                        showMessage('Error: ' + rubric.error, 'error');
+                    } else {
+                        activeRubric = rubric;
+                        renderRubric();
+                        autoSaveRubric(rubric, 'import');
+                        showMessage('Importada y guardada!', 'success');
+                    }
+                } catch (e) {
+                    showMessage('Error: ' + e.message, 'error');
+                }
+                btn.disabled = false;
+                document.getElementById('local-file-input').value = '';
+                document.getElementById('selected-file-display').classList.add('hidden');
+            })
+            .withFailureHandler(err => {
+                showMessage('Error: ' + err.message, 'error');
+                btn.disabled = false;
+            })
+            .uploadAndAnalyzeRubricContent(fileObject);
+    };
+
+    reader.readAsArrayBuffer(selectedFile);
+}
+
+// ====================================================================
+// VISUALIZACIÓN Y RENDERIZADO
+// ====================================================================
+
+function renderRubric() {
+    if (!activeRubric) {
+        document.getElementById('rubric-display').innerHTML = '<p class="text-gray-500 italic text-center py-8">No hay rúbrica activa.</p>';
+        const exportBtn = document.getElementById('export-rubric-btn');
+        const editBtn = document.getElementById('edit-rubric-btn');
+        const saveBtn = document.getElementById('save-rubric-btn');
+        if(exportBtn) exportBtn.disabled = true;
+        if(editBtn) editBtn.disabled = true;
+        if(saveBtn) saveBtn.disabled = true;
+        return;
+    }
+
+    const exportBtn = document.getElementById('export-rubric-btn');
+    const editBtn = document.getElementById('edit-rubric-btn');
+    const saveBtn = document.getElementById('save-rubric-btn');
+    // Habilitar botones si existen
+    if(exportBtn) { exportBtn.disabled = false; exportBtn.classList.remove('hidden'); }
+    if(editBtn) editBtn.disabled = false;
+    if(saveBtn) saveBtn.disabled = false;
+
+    const display = document.getElementById('rubric-display');
+    let table = '<table class="min-w-full border-collapse border border-gray-300 text-sm">';
+    
+    table += '<thead><tr class="bg-indigo-100"><th class="border border-gray-300 p-3 text-left font-bold">Criterio</th>';
+    activeRubric.levels.forEach(level => {
+        table += `<th class="border border-gray-300 p-3 text-center font-bold">${level.name}<br><span class="text-xs">(${level.points} pts)</span></th>`;
+    });
+    table += '</tr></thead><tbody>';
+    
+    activeRubric.criteria.forEach(criterion => {
+        table += `<tr><td class="border border-gray-300 p-3 font-semibold bg-gray-50">${criterion.name}<br><span class="text-xs text-gray-600">Max: ${criterion.max_points} pts</span></td>`;
+        activeRubric.levels.forEach(level => {
+            const desc = criterion.level_descriptions.find(d => d.level_id === level.id);
+            table += `<td class="border border-gray-300 p-3 text-xs">${desc ? desc.description : 'N/A'}</td>`;
+        });
+        table += '</tr>';
+    });
+    
+    table += '</tbody></table>';
+    table = `<div class="mb-4"><h4 class="text-lg font-bold">${activeRubric.name}</h4><p class="text-sm text-gray-600">${activeRubric.description}</p></div>` + table;
+    
+    display.innerHTML = table;
+    // Botones ya habilitados arriba
+}
+
+function manualSaveRubric() {
+    if (!activeRubric) return;
+    showMessage('Guardando rúbrica...', 'loading');
+    
+    // Si la función autoSaveRubric existe (desde app_autosave), la usamos.
+    // Si no, llamamos directo al backend.
+    if(typeof autoSaveRubric === 'function') {
+        autoSaveRubric(activeRubric, 'manual_button');
+        showMessage('✅ Rúbrica guardada exitosamente.', 'success');
+        loadSavedRubricsList(); // Refrescar lista lateral/inferior
+    } else {
+        // Fallback si no existe autoSave
+        google.script.run
+            .withSuccessHandler(res => {
+                showMessage('✅ Guardado manual exitoso.', 'success');
+                loadSavedRubricsList();
+            })
+            .withFailureHandler(e => showMessage('Error: ' + e.message, 'error'))
+            .saveRubric(activeRubric); 
+    }
+}
+
+function exportActiveRubric() {
+    handleExportRubric();
+}
+
+function handleExportRubric() {
+    if (!activeRubric) {
+        showMessage('No hay rúbrica para exportar.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('export-rubric-btn');
+    if(btn) btn.disabled = true;
+    showMessage('Exportando a Sheets...', 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            showMessage(response, response.startsWith('Éxito') ? 'success' : 'error');
+            if(btn) btn.disabled = false;
+        })
+        .withFailureHandler(err => {
+            showMessage('Error: ' + err.message, 'error');
+            if(btn) btn.disabled = false;
+        })
+        .exportRubric(activeRubric, activeRubric.name);
+}
+
+// ====================================================================
+// FASE 3: EDICIÓN
+// ====================================================================
+
+function openEditModal() {
+    if (!activeRubric) {
+        showMessage('No hay rúbrica para editar.', 'error');
+        return;
+    }
+
+    editingRubric = JSON.parse(JSON.stringify(activeRubric));
+    
+    document.getElementById('edit-rubric-name').value = editingRubric.name;
+    document.getElementById('edit-rubric-description').value = editingRubric.description;
+    
+    renderEditLevels();
+    renderEditCriteria();
+    
+    document.getElementById('edit-rubric-modal').classList.add('show');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-rubric-modal').classList.remove('show');
+    editingRubric = null;
+}
+
+function renderEditLevels() {
+    const container = document.getElementById('edit-levels-container');
+    container.innerHTML = editingRubric.levels.map((level, idx) => `
+        <div class="flex space-x-2 items-center">
+            <input type="text" value="${level.name}" onchange="editingRubric.levels[${idx}].name = this.value" class="flex-1 p-2 border rounded" placeholder="Nombre">
+            <input type="number" value="${level.points}" onchange="editingRubric.levels[${idx}].points = parseInt(this.value)" class="w-20 p-2 border rounded" placeholder="Pts">
+            <button onclick="removeLevelInEdit(${idx})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded">-</button>
+        </div>
+    `).join('');
+}
+
+function renderEditCriteria() {
+    const container = document.getElementById('edit-criteria-container');
+    container.innerHTML = editingRubric.criteria.map((criterion, idx) => `
+        <div class="border p-3 rounded">
+            <div class="flex space-x-2 mb-2">
+                <input type="text" value="${criterion.name}" onchange="editingRubric.criteria[${idx}].name = this.value" class="flex-1 p-2 border rounded" placeholder="Criterio">
+                <input type="number" value="${criterion.max_points}" onchange="editingRubric.criteria[${idx}].max_points = parseInt(this.value)" class="w-20 p-2 border rounded" placeholder="Max">
+                <button onclick="removeCriterionInEdit(${idx})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded">-</button>
+            </div>
+            <div class="text-xs space-y-1">
+                ${editingRubric.levels.map((level, levelIdx) => {
+                    const desc = criterion.level_descriptions.find(d => d.level_id === level.id);
+                    return `<textarea onchange="updateCriterionDescription(${idx}, ${level.id}, this.value)" class="w-full p-1 border rounded text-xs" placeholder="${level.name}" rows="2">${desc ? desc.description : ''}</textarea>`;
+                }).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateCriterionDescription(criterionIdx, levelId, newDesc) {
+    const criterion = editingRubric.criteria[criterionIdx];
+    const descObj = criterion.level_descriptions.find(d => d.level_id === levelId);
+    if (descObj) {
+        descObj.description = newDesc;
+    } else {
+        criterion.level_descriptions.push({ level_id: levelId, description: newDesc });
+    }
+}
+
+function addLevelInEdit() {
+    const newId = Math.max(...editingRubric.levels.map(l => l.id)) + 1;
+    editingRubric.levels.push({ id: newId, name: `Nivel ${newId}`, points: 1 });
+    renderEditLevels();
+    renderEditCriteria();
+}
+
+function removeLevelInEdit(idx) {
+    if (editingRubric.levels.length <= 1) {
+        showMessage('Debe haber al menos un nivel.', 'error');
+        return;
+    }
+    editingRubric.levels.splice(idx, 1);
+    renderEditLevels();
+    renderEditCriteria();
+}
+
+function addCriterionInEdit() {
+    editingRubric.criteria.push({
+        name: 'Nuevo Criterio',
+        max_points: 10,
+        level_descriptions: editingRubric.levels.map(l => ({ level_id: l.id, description: '' }))
+    });
+    renderEditCriteria();
+}
+
+function removeCriterionInEdit(idx) {
+    if (editingRubric.criteria.length <= 1) {
+        showMessage('Debe haber al menos un criterio.', 'error');
+        return;
+    }
+    editingRubric.criteria.splice(idx, 1);
+    renderEditCriteria();
+}
+
+function saveEditedRubricChanges() {
+    editingRubric.name = document.getElementById('edit-rubric-name').value.trim();
+    editingRubric.description = document.getElementById('edit-rubric-description').value.trim();
+
+    if (!editingRubric.name) {
+        showMessage('El nombre es obligatorio.', 'error');
+        return;
+    }
+
+    showMessage('Guardando cambios...', 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            const result = JSON.parse(response);
+            if (result.error) {
+                showMessage('Error: ' + result.error, 'error');
+            } else {
+                activeRubric = editingRubric;
+                renderRubric();
+                closeEditModal();
+                loadSavedRubricsList();
+                showMessage('Cambios guardados!', 'success');
+            }
+        })
+        .withFailureHandler(err => showMessage('Error: ' + err.message, 'error'))
+        .saveEditedRubric(editingRubric);
+}
+
+// ====================================================================
+// GESTIÓN DE CURSOS
+// ====================================================================
+
+// Nota: la implementación de `addCourse()` fue consolidada en `app_courses_basic.html`.
+// La versión legacy se movió a `archive/app_logic_addCourse_legacy.html` para referencia.
+// Evitar duplicados: si necesitas restaurar la versión antigua, revisa ese archivo.
+
+
+/**
+ * Carga cursos guardados en Drive (usa la función server-side loadCoursesFromSheets)
+ * Convierte la lista en el formato local `courses` y renderiza la lista.
+ */
+function loadCoursesFromDrive() {
+    const container = document.getElementById('course-list-display');
+    container.innerHTML = '<p class="text-gray-500 italic">Cargando cursos desde Drive...</p>';
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const arr = JSON.parse(response);
+                // arr es un array de cursos: {id, name, students, rubrics, grades}
+                courses = {};
+                arr.forEach(c => {
+                    // Si students vienen como objetos o strings, normalizar
+                    const students = (c.students && Array.isArray(c.students)) ? c.students : [];
+                    courses[c.name] = {
+                        id: c.id || c.name,
+                        name: c.name,
+                        students: students,
+                        rubrics: c.rubrics || {},
+                        grades: c.grades || {}
+                    };
+                });
+                renderCourseList();
+                if (window.renderDashboardStats) {
+                    renderDashboardStats();
+                }
+            } catch (e) {
+                // Si la respuesta no es array, mostrar mensaje y mantener cursos locales
+                container.innerHTML = '<p class="text-gray-500 italic">No hay cursos guardados.</p>';
+            }
+        })
+        .withFailureHandler(err => {
+            container.innerHTML = '<p class="text-red-500">Error cargando cursos: ' + err.message + '</p>';
+        })
+        .loadCoursesFromSheets();
+}
+
+function openEditCourse(name) {
+    // Abrir el modal de curso en modo edición para mantener UX consistente
+    if (!courses[name]) return;
+    editingCourse = name;
+    openAddCourseModalFor(name);
+}
+
+function cancelEditCourse() {
+    editingCourse = null;
+    document.getElementById('course-name').value = '';
+    document.getElementById('student-list').value = '';
+    const saveBtn = document.getElementById('course-save-btn');
+    saveBtn.textContent = 'Guardar';
+    saveBtn.onclick = addCourse;
+    document.getElementById('course-cancel-btn').classList.add('hidden');
+}
+
+// Modal helpers for adding courses
+function openAddCourseModal(){
+    // reset form
+    document.getElementById('course-name').value = '';
+    document.getElementById('student-list').value = '';
+    // reset evaluation select and report
+    const sel = document.getElementById('modal-select-evaluation'); if(sel) { sel.innerHTML = '<option value="">-- Seleccionar evaluación --</option>'; sel.disabled = true; }
+    clearModalReport();
+    modalCourseContext = null;
+    // Preferir panel lateral si está disponible: poblar inputs `ce-*` y abrir
+    const ceName = document.getElementById('ce-course-name');
+    const ceStudents = document.getElementById('ce-students');
+    if(ceName) ceName.value = '';
+    if(ceStudents) ceStudents.value = '';
+    if(window.openCourseEditor) return window.openCourseEditor();
+    const modal = document.getElementById('add-course-modal');
+    if(modal) modal.classList.remove('hidden');
+}
+
+function closeAddCourseModal(){
+    // Cerrar panel si está disponible o fallback al modal
+    try{ if(window.closeCourseEditor) { window.closeCourseEditor(); window.editingCourse = null; return; } }catch(e){}
+    const modal = document.getElementById('add-course-modal');
+    if(modal) { modal.classList.add('hidden'); clearModalReport(); }
+}
+
+// Contexto actual del modal (curso seleccionado para ver reportes)
+let modalCourseContext = null;
+let modalChartInstance = null;
+
+function openAddCourseModalFor(courseName){
+    // Open modal but with course context for viewing reports / editing
+    if(!courses[courseName]) return openAddCourseModal();
+    modalCourseContext = courseName;
+    document.getElementById('course-name').value = courses[courseName].name;
+    document.getElementById('student-list').value = courses[courseName].students.map(s=>s.name).join('\n');
+    // set save button to update
+    const saveBtn = document.getElementById('modal-save-course-btn');
+    if(saveBtn){ saveBtn.textContent = 'Actualizar'; saveBtn.onclick = updateCourse; }
+    // populate evaluation select
+    populateModalEvaluationSelect(courseName);
+    // Preferir panel lateral: poblar campos `ce-*`, marcar edición y abrir panel
+    const ceName = document.getElementById('ce-course-name');
+    const ceStudents = document.getElementById('ce-students');
+    if(ceName) ceName.value = courses[courseName].name;
+    if(ceStudents) ceStudents.value = courses[courseName].students.map(s=>s.name).join('\n');
+    window.editingCourse = courseName;
+    if(window.openCourseEditor) return window.openCourseEditor();
+    const modal = document.getElementById('add-course-modal'); if(modal) modal.classList.remove('hidden');
+}
+
+function populateModalEvaluationSelect(courseName){
+    const sel = document.getElementById('modal-select-evaluation');
+    if(!sel) return;
+    sel.innerHTML = '';
+    const course = courses[courseName];
+    if(!course) { sel.innerHTML = '<option value="">-- No hay curso --</option>'; sel.disabled = true; return; }
+    const evalIds = Object.keys(course.rubrics || {});
+    if(evalIds.length===0){ sel.innerHTML = '<option value="">-- No hay evaluaciones asignadas --</option>'; sel.disabled = true; return; }
+    sel.disabled = false;
+    sel.innerHTML = '<option value="">-- Seleccionar evaluación --</option>' + evalIds.map(eid=>`<option value="${eid}">${eid}</option>`).join('');
+    // optionally select first
+    sel.value = evalIds[0];
+    modalEvaluationChanged();
+}
+
+function modalEvaluationChanged(){
+    const sel = document.getElementById('modal-select-evaluation');
+    if(!sel) return;
+    const evalId = sel.value;
+    if(!modalCourseContext && !evalId) return;
+    renderModalReport(modalCourseContext, evalId);
+}
+
+function clearModalReport(){
+    const summary = document.getElementById('modal-criterion-summary'); if(summary) summary.innerHTML='';
+    const breakdown = document.getElementById('modal-student-breakdown'); if(breakdown) breakdown.innerHTML='';
+    const canvas = document.getElementById('modal-indicator-chart'); if(canvas){ const ctx = canvas.getContext('2d'); if(modalChartInstance){ modalChartInstance.destroy(); modalChartInstance=null;} ctx.clearRect(0,0,canvas.width,canvas.height); }
+}
+
+function renderModalReport(courseName, evaluationId){
+    clearModalReport();
+    if(!courseName || !courses[courseName]) return;
+    const course = courses[courseName];
+    // Determine rubric for evaluation
+    const rubricId = course.rubrics && course.rubrics[evaluationId] ? course.rubrics[evaluationId] : null;
+    let rubric = null;
+    if(rubricId){
+        rubric = savedRubrics && savedRubrics.find(r=>r.id===rubricId);
+    }
+    if(!rubric && activeRubric) rubric = activeRubric;
+    if(!rubric){
+        const summary = document.getElementById('modal-criterion-summary'); if(summary) summary.innerHTML = '<em>No hay rúbrica asociada a esta evaluación.</em>';
+        return;
+    }
+
+    const criteria = rubric.criteria || [];
+    // Build average per criterion
+    const averages = [];
+    const gradesForEval = (course.grades && course.grades[evaluationId]) ? course.grades[evaluationId] : {};
+
+    criteria.forEach((criterion, cIdx)=>{
+        let sum = 0; let count = 0;
+        course.students.forEach(s=>{
+            const studentGrades = gradesForEval[s.id];
+            if(studentGrades && studentGrades[cIdx]!==undefined){
+                const levelId = studentGrades[cIdx];
+                const level = rubric.levels.find(l=>l.id==levelId);
+                const pts = level ? Math.min(level.points, criterion.max_points) : 0;
+                sum += pts; count++;
+            }
+        });
+        const avg = count>0 ? sum / count : 0;
+        averages.push(avg);
+    });
+
+    // Chart: labels are criterion names, data is averages
+    const labels = criteria.map(c=>c.name);
+    const data = averages.map((v,i)=> Math.round(v*100)/100 );
+
+    const canvas = document.getElementById('modal-indicator-chart');
+    if(canvas){
+        const ctx = canvas.getContext('2d');
+        if(modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
+        modalChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Puntaje promedio por indicador',
+                    data: data,
+                    borderColor: '#4f46e5',
+                    backgroundColor: 'rgba(79,70,229,0.08)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // Criterion summary: flag criteria below threshold (e.g., 50% of max)
+    const thresholdFrac = 0.5;
+    const critBox = document.getElementById('modal-criterion-summary');
+    if(critBox){
+        let html = '<ul class="space-y-2">';
+        criteria.forEach((c, idx)=>{
+            const avg = averages[idx] || 0;
+            const max = c.max_points || 1;
+            const pct = max>0? (avg / max) : 0;
+            const needs = pct < thresholdFrac;
+            html += `<li><span class="font-semibold">${c.name}:</span> ${Math.round(avg*10)/10} / ${max} ${needs? '<span class="text-red-600 font-medium">· Reforzar</span>':''}</li>`;
+        });
+        html += '</ul>';
+        critBox.innerHTML = html;
+    }
+
+    // Student breakdown: average per student for this evaluation
+    const stuBox = document.getElementById('modal-student-breakdown');
+    if(stuBox){
+        let html = '<h5 class="font-semibold">Por estudiante</h5><ul class="mt-2">';
+        course.students.forEach(s=>{
+            let sum = 0; let count = 0;
+            const studentGrades = gradesForEval[s.id];
+            if(studentGrades){
+                criteria.forEach((c, idx)=>{
+                    if(studentGrades[idx]!==undefined){ const level = rubric.levels.find(l=>l.id==studentGrades[idx]); const pts = level? Math.min(level.points,c.max_points):0; sum+=pts; count++; }
+                });
+            }
+            const avg = count>0? (sum/count): 0;
+            html += `<li> ${s.name}: <strong>${Math.round(avg*10)/10}</strong> (sobre ${count>0? Math.round(criteria.reduce((a,b)=>a+b.max_points,0)/criteria.length): 'N/A'})</li>`;
+        });
+        html += '</ul>';
+        stuBox.innerHTML = html;
+    }
+}
+
+function updateCourse() {
+    if (!editingCourse) return;
+    const originalName = editingCourse;
+    const newName = document.getElementById('course-name').value.trim();
+    const studentText = document.getElementById('student-list').value.trim();
+
+    if (!newName) {
+        showMessage('Ingresa el nombre del curso.', 'error');
+        return;
+    }
+
+    const students = studentText.split('\n').filter(s => s.trim()).map((s, idx) => ({ id: `student_${Date.now()}_${idx}`, name: s.trim() }));
+    if (students.length === 0) {
+        showMessage('Ingresa al menos un estudiante.', 'error');
+        return;
+    }
+
+    // Construir objeto actualizado
+    const updatedCourse = {
+        id: courses[originalName] ? courses[originalName].id : `course_${Date.now()}`,
+        name: newName,
+        students: students,
+        evaluations: window.tempEvaluations || (courses[originalName] ? courses[originalName].evaluations : []) || [],
+        rubrics: courses[originalName] ? courses[originalName].rubrics : {},
+        grades: courses[originalName] ? courses[originalName].grades : {}
+    };
+    
+    // Limpiar temp variable
+    window.tempEvaluations = null;
+
+    showMessage(`Actualizando curso "${newName}"...`, 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const parsed = JSON.parse(response);
+                if (parsed.error) {
+                    showMessage('Error al actualizar curso: ' + parsed.error, 'error');
+                } else {
+                    // Si cambió el nombre, eliminar la entrada antigua
+                    if (newName !== originalName) {
+                        delete courses[originalName];
+                    }
+                    courses[newName] = updatedCourse;
+                    showMessage(`Curso "${newName}" actualizado.`, 'success');
+                    cancelEditCourse();
+                    if(window.renderDashboardStats) try{ renderDashboardStats(); }catch(e){}
+                    renderCourseList();
+                }
+            } catch (e) {
+                showMessage('Curso actualizado.', 'success');
+                cancelEditCourse();
+                if(window.renderDashboardStats) try{ renderDashboardStats(); }catch(e){}
+                renderCourseList();
+            }
+        })
+        .withFailureHandler(err => {
+            showMessage('Error al actualizar curso: ' + err.message, 'error');
+        })
+        .saveCourse(updatedCourse);
+}
+
+function renderCourseList() {
+    const display = document.getElementById('course-list-display');
+    const courseNames = Object.keys(courses);
+
+    if (courseNames.length === 0) {
+        display.innerHTML = '<p class="text-gray-500 italic">No hay cursos.</p>';
+        return;
+    }
+
+    display.innerHTML = courseNames.map(name => {
+        const course = courses[name];
+        return `
+            <div class="border p-4 rounded-lg bg-gray-50">
+                <h4 class="font-bold text-lg">${name}</h4>
+                <p class="text-sm text-gray-600">${course.students.length} estudiantes</p>
+                <details class="mt-2">
+                    <summary class="cursor-pointer text-blue-600 hover:text-blue-800">Ver estudiantes</summary>
+                    <ul class="mt-2 ml-4 text-sm">
+                        ${course.students.map(s => `<li>• ${s.name}</li>`).join('')}
+                    </ul>
+                </details>
+                <div class="mt-3 flex space-x-2">
+                    <button onclick="openEditCourse('${name}')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-bold py-1 px-2 rounded">✏️ Editar</button>
+                    <button onclick="confirmDeleteCourse('${name}')" class="bg-red-500 hover:bg-red-600 text-white text-sm font-bold py-1 px-2 rounded">🗑️ Eliminar</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+let coursePendingDelete = null;
+
+function confirmDeleteCourse(name) {
+    // Abrir modal de confirmación en vez de confirm() nativo
+    coursePendingDelete = name;
+    const txt = document.getElementById('delete-course-text');
+    if (txt) txt.textContent = `¿Eliminar el curso "${name}" de Drive y localmente? Esto moverá el archivo a la papelera.`;
+    const modal = document.getElementById('delete-course-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeDeleteCourseModal(){
+    coursePendingDelete = null;
+    const modal = document.getElementById('delete-course-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function deleteCourseConfirmed(){
+    const name = coursePendingDelete;
+    if (!name) return closeDeleteCourseModal();
+    closeDeleteCourseModal();
+    showMessage(`Eliminando curso "${name}"...`, 'loading');
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const res = JSON.parse(response);
+                if (res.error) {
+                    showMessage('Error al eliminar curso: ' + res.error, 'error');
+                } else {
+                    delete courses[name];
+                    showMessage('Curso eliminado.', 'success');
+                    renderCourseList();
+                }
+            } catch (e) {
+                delete courses[name];
+                showMessage('Curso eliminado.', 'success');
+                renderCourseList();
+            }
+        })
+        .withFailureHandler(err => showMessage('Error al eliminar curso: ' + err.message, 'error'))
+        .deleteCourse(name);
+}
+
+// ====================================================================
+// FASE 2: ASIGNACIÓN Y CALIFICACIÓN
+// ====================================================================
+
+function loadCoursesForGrading() {
+    const select = document.getElementById('select-course');
+    const courseNames = Object.keys(courses);
+
+    select.innerHTML = '<option value="">-- Seleccionar --</option>' +
+        courseNames.map(name => `<option value="${name}">${name}</option>`).join('');
+}
+
+function loadRubricsForSelector() {
+    const select = document.getElementById('select-rubric-for-course');
+    select.innerHTML = '<option value="">-- Usar Activa --</option>';
+
+    savedRubrics.forEach(r => {
+        select.innerHTML += `<option value="${r.id}">${r.name} (v${r.version})</option>`;
+    });
+}
+
+function assignRubricToEvaluation() {
+    const courseName = document.getElementById('select-course').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+    const rubricId = document.getElementById('select-rubric-for-course').value;
+
+    if (!courseName || !evaluationId) return;
+
+    if (rubricId) {
+        courses[courseName].rubrics[evaluationId] = rubricId;
+        showMessage(`Rúbrica asignada.`, 'success');
+    } else {
+        delete courses[courseName].rubrics[evaluationId];
+    }
+
+    renderGradingRubric();
+}
+
+function loadStudentsAndResetGrading() {
+    const courseName = document.getElementById('select-course').value;
+    const studentSelect = document.getElementById('select-student');
+
+    if (!courseName || !courses[courseName]) {
+        studentSelect.innerHTML = '<option value="">-- Seleccionar --</option>';
+        return;
+    }
+
+    studentSelect.innerHTML = '<option value="">-- Seleccionar --</option>' +
+        courses[courseName].students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    
+    resetGrading();
+}
+
+function resetGrading() {
+    currentGrading = {};
+    currentFinalGrade = '1.0';
+    renderGradingRubric();
+    updateFinalScores();
+}
+
+function renderGradingRubric() {
+    const display = document.getElementById('grading-rubric-display');
+
+    if (!activeRubric) {
+        display.innerHTML = '<p class="text-gray-500 italic">No hay rúbrica.</p>';
+        return;
+    }
+
+    let table = '<table class="min-w-full border-collapse border text-sm">';
+    table += '<thead><tr class="bg-indigo-100"><th class="border p-2">Criterio</th>';
+    activeRubric.levels.forEach(level => {
+        table += `<th class="border p-2">${level.name} (${level.points}pts)</th>`;
+    });
+    table += '</tr></thead><tbody>';
+
+    activeRubric.criteria.forEach((criterion, cIdx) => {
+        table += `<tr><td class="border p-2 font-semibold">${criterion.name}</td>`;
+        activeRubric.levels.forEach(level => {
+            const desc = criterion.level_descriptions.find(d => d.level_id === level.id);
+            const isSelected = currentGrading[cIdx] === level.id;
+            table += `<td class="border p-2 cell-score ${isSelected ? 'selected' : ''}" onclick="selectGradeCell(${cIdx}, ${level.id})">${desc ? desc.description : 'N/A'}</td>`;
+        });
+        table += '</tr>';
+    });
+
+    table += '</tbody></table>';
+    display.innerHTML = table;
+}
+
+function selectGradeCell(criterionIndex, levelId) {
+    currentGrading[criterionIndex] = levelId;
+    renderGradingRubric();
+    updateFinalScores();
+}
+
+function updateFinalScores() {
+    if (!activeRubric) return;
+
+    let totalAchieved = 0;
+    let totalMax = 0;
+
+    activeRubric.criteria.forEach((criterion, idx) => {
+        totalMax += criterion.max_points;
+        const selectedLevelId = currentGrading[idx];
+        if (selectedLevelId !== undefined) {
+            const level = activeRubric.levels.find(l => l.id === selectedLevelId);
+            if (level) {
+                totalAchieved += Math.min(level.points, criterion.max_points);
+            }
+        }
+    });
+
+    document.getElementById('final-score').textContent = `${totalAchieved} / ${totalMax}`;
+
+    const percentage = totalMax > 0 ? totalAchieved / totalMax : 0;
+    const passingScore = totalMax * PASSING_PERCENTAGE;
+    let grade;
+
+    if (totalAchieved < passingScore) {
+        grade = MIN_GRADE + (totalAchieved / passingScore) * (PASS_GRADE - MIN_GRADE);
+    } else {
+        const excessScore = totalAchieved - passingScore;
+        const excessMax = totalMax - passingScore;
+        grade = PASS_GRADE + (excessScore / excessMax) * (MAX_GRADE - PASS_GRADE);
+    }
+
+    currentFinalGrade = Math.max(MIN_GRADE, Math.min(MAX_GRADE, grade)).toFixed(1);
+    
+    const gradeSpan = document.getElementById('final-grade');
+    gradeSpan.textContent = currentFinalGrade;
+    gradeSpan.className = `text-4xl font-extrabold ${parseFloat(currentFinalGrade) >= PASS_GRADE ? 'nota-aprobada' : 'nota-reprobada'}`;
+
+    const hasGrading = Object.keys(currentGrading).length > 0;
+    document.getElementById('doc-simple-btn').disabled = !hasGrading;
+    document.getElementById('doc-feedback-btn').disabled = !hasGrading;
+}
+
+// ====================================================================
+// GENERACIÓN DE DOCUMENTOS
+// ====================================================================
+
+function handleDocumentGeneration(includeAIFeedback) {
+    const courseName = document.getElementById('select-course').value;
+    const studentId = document.getElementById('select-student').value;
+    const evaluationId = document.getElementById('select-evaluation').value;
+
+    if (!courseName || !studentId || !evaluationId || !activeRubric) {
+        showMessage('Debe seleccionar curso, estudiante y evaluación.', 'error');
+        return;
+    }
+
+    const student = courses[courseName].students.find(s => s.id === studentId);
+    if (!student) {
+        showMessage('Estudiante no encontrado.', 'error');
+        return;
+    }
+
+    const btn = event.target;
+    btn.disabled = true;
+    showMessage('Generando documento...', 'loading');
+
+    const funcName = includeAIFeedback ? 'createDocWithFeedback' : 'createGradingDoc';
+    const args = [courseName, student.name, evaluationId, activeRubric, currentGrading, currentFinalGrade];
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const docData = JSON.parse(response);
+                if (docData.error) {
+                    showMessage('Error: ' + docData.error, 'error');
+                } else {
+                    showDocumentLinkPopup(docData);
+                }
+            } catch (e) {
+                showMessage(response, response.startsWith('Éxito') ? 'success' : 'error');
+            }
+            btn.disabled = false;
+        })
+        .withFailureHandler(e => {
+            showMessage('Error: ' + e.message, 'error');
+            btn.disabled = false;
+        })
+        [funcName](...args);
+}
+
+function showDocumentLinkPopup(docData) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+    
+    const content = document.createElement('div');
+    content.style.cssText = 'background: white; padding: 30px; border-radius: 12px; max-width: 500px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+    
+    content.innerHTML = `
+        <h3 style="color: #10b981; margin: 0 0 15px 0; font-size: 24px;">✅ Documento Creado</h3>
+        <p style="color: #6b7280; margin-bottom: 20px;">${docData.message || 'El documento se generó correctamente'}</p>
+        <a href="${docData.url}" target="_blank" 
+           style="display: inline-block; background: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 10px; transition: background 0.3s;" 
+           onmouseover="this.style.background='#4338ca'" 
+           onmouseout="this.style.background='#4f46e5'">
+            📄 Abrir Documento
+        </a>
+        <br>
+        <button onclick="this.parentElement.parentElement.remove()" 
+                style="background: #e5e7eb; color: #374151; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+            Cerrar
+        </button>
+    `;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// ====================================================================
+// INICIALIZACIÓN
+// ====================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Registrar event listeners para tabs
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', () => {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+
+            button.classList.add('active');
+            document.getElementById(`tab-${button.dataset.tab}`).classList.remove('hidden');
+
+            if (button.dataset.tab === 'rubrica') {
+                loadSavedRubricsList();
+            } else if (button.dataset.tab === 'cursos') {
+                loadCoursesFromDrive();
+            } else if (button.dataset.tab === 'calificacion') {
+                loadCoursesForGrading();
+                loadRubricsForSelector();
+                renderGradingRubric();
+            }
+        });
+    });
+
+    // Cargar lista inicial de rúbricas guardadas
+    loadSavedRubricsList();
+    // Cargar cursos desde Drive al inicio
+    loadCoursesFromDrive();
+});
+</script>

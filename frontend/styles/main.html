@@ -1,0 +1,75 @@
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+    :root {
+        --primary: #4f46e5;
+        --primary-hover: #4338ca;
+    }
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f3f4f6;
+    }
+    .tab-button.active {
+        border-bottom: 3px solid var(--primary);
+        color: var(--primary);
+        font-weight: 600;
+    }
+    .cell-score {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .cell-score:hover {
+        transform: scale(1.03);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .cell-score.selected {
+        background-color: var(--primary);
+        color: white;
+        border-color: var(--primary-hover);
+        box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
+    }
+    .nota-aprobada { color: #10b981; }
+    .nota-reprobada { color: #ef4444; }
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.5);
+        align-items: center;
+        justify-content: center;
+    }
+    .modal.show { display: flex; }
+    .modal-content {
+        background-color: #fefefe;
+        margin: auto;
+        padding: 20px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 800px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    /* Reglas para activar la visibilidad y transición cuando el modal tiene clase .show */
+    .modal.show .modal-content {
+        opacity: 1 !important;
+        transform: scale(1) !important;
+    }
+    .rubric-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .rubric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    @keyframes progress {
+        0% { width: 0%; transform: translateX(-100%); }
+        100% { width: 100%; transform: translateX(100%); }
+    }
+    .animate-progress {
+        animation: progress 2s infinite linear;
+    }
+</style>

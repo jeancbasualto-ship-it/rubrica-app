@@ -1,0 +1,111 @@
+<script>
+/**
+ * Lógica de navegación del Sidebar y Acciones Rápidas
+ * Gestiona la visibilidad de las secciones y la carga de datos bajo demanda.
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[NAV] Inicializando sistema de navegación...');
+
+    const sections = {
+        'nav-rubricas': 'rubrics-page',
+        'nav-cursos': 'courses-page',
+        'nav-calificar': 'calification-page',
+        'nav-reportes': 'reports-page',
+        'nav-ajustes': 'settings-page'
+    };
+
+    // 1. Configurar botones del Sidebar
+    Object.keys(sections).forEach(navId => {
+        const btn = document.getElementById(navId);
+        if (!btn) return;
+
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetSectionId = sections[navId];
+            
+            // Actualizar estado visual de los botones
+            document.querySelectorAll('aside nav button').forEach(b => {
+                b.classList.remove('bg-indigo-50', 'text-indigo-700', 'font-medium');
+                b.classList.add('hover:bg-gray-100');
+            });
+            btn.classList.add('bg-indigo-50', 'text-indigo-700', 'font-medium');
+            btn.classList.remove('hover:bg-gray-100');
+
+            // Ocultar todas las secciones principales
+            // Incluyendo dashboard-main
+            document.getElementById('dashboard-main').classList.add('hidden');
+            Object.values(sections).forEach(sid => {
+                const el = document.getElementById(sid);
+                if(el) el.classList.add('hidden');
+            });
+
+            // Mostrar sección objetivo
+            const targetEl = document.getElementById(targetSectionId);
+            if (targetEl) {
+                targetEl.classList.remove('hidden');
+            } else {
+                console.warn(`[NAV] Sección no encontrada: ${targetSectionId}`);
+            }
+
+            // Cargar datos específicos
+            if (navId === 'nav-rubricas') {
+                if (window.loadSavedRubricsList) window.loadSavedRubricsList();
+            } else if (navId === 'nav-cursos') {
+                if (window.loadCoursesFromDrive) window.loadCoursesFromDrive();
+            } else if (navId === 'nav-calificar') {
+                if (window.loadCoursesForGrading) window.loadCoursesForGrading();
+            } else if (navId === 'nav-reportes') {
+                if (window.initReportsPage) window.initReportsPage();
+            }
+        });
+    });
+
+    // 2. Configurar Acciones Rápidas
+    const btnNewRubric = document.getElementById('quick-new-rubric');
+    if (btnNewRubric) {
+        btnNewRubric.addEventListener('click', () => {
+            // Simular click en "Rúbricas"
+            const nav = document.getElementById('nav-rubricas');
+            if(nav) nav.click();
+            // Foco en el prompt de IA (ubicado en panel derecho o modal, asumiendo panel por ahora)
+            setTimeout(() => {
+                const prompt = document.getElementById('ai-prompt');
+                if(prompt) {
+                    prompt.focus();
+                    prompt.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 100);
+        });
+    }
+
+    const btnImport = document.getElementById('quick-import-csv');
+    if (btnImport) {
+        btnImport.addEventListener('click', () => {
+            const fileInput = document.getElementById('local-file-input');
+            if(fileInput) fileInput.click();
+        });
+    }
+
+    const btnEditCourses = document.getElementById('open-course-editor');
+    if (btnEditCourses) {
+        btnEditCourses.addEventListener('click', () => {
+             // Simular click en "Cursos"
+             const nav = document.getElementById('nav-cursos');
+             if(nav) nav.click();
+        });
+    }
+
+    // 3. Manejo Mobile Sidebar
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('prototype-sidebar');
+    if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('hidden');
+            sidebar.classList.toggle('absolute');
+            sidebar.classList.toggle('z-50');
+            sidebar.classList.toggle('h-full');
+            sidebar.classList.toggle('shadow-xl');
+        });
+    }
+});
+</script>

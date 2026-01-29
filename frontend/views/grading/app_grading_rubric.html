@@ -1,0 +1,130 @@
+<script>
+let excludedCriteria = {};
+
+function renderGradingRubric() {
+    const display = document.getElementById('grading-rubric-display');
+
+    if (!activeRubric) {
+        display.innerHTML = `
+            <div class="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <span class="text-4xl block mb-3">👆</span>
+                <p class="text-gray-600 font-medium text-lg">Selecciona una rúbrica asignada para comenzar.</p>
+                <p class="text-sm text-gray-400 mt-1">Usa los selectores de arriba.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let table = '<table class="min-w-full border-collapse border text-sm">';
+    table += '<thead><tr class="bg-indigo-100"><th class="border p-2 min-w-[150px]">Criterio</th>';
+    activeRubric.levels.forEach(level => {
+        table += `<th class="border p-2">${level.name} (${level.points}pts)</th>`;
+    });
+    table += '</tr></thead><tbody>';
+
+    activeRubric.criteria.forEach((criterion, cIdx) => {
+        const isExcluded = excludedCriteria[cIdx];
+        const rowClass = isExcluded ? 'bg-gray-100 opacity-50' : '';
+        
+        table += `<tr class="${rowClass}">`;
+        
+        // Columna Criterio con Botón de Omitir
+        table += `<td class="border p-2 relative group">
+            <div class="font-semibold">${criterion.name}</div>
+            <div class="text-xs text-gray-500 mt-1">Max: ${criterion.max_points} pts</div>
+            <button onclick="toggleCriterionExclusion(${cIdx})" class="absolute top-2 right-2 text-gray-400 hover:text-indigo-600 focus:outline-none" title="${isExcluded ? 'Incluir este criterio' : 'Omitir este criterio'}">
+                ${isExcluded ? '👁️‍🗨️' : '👁️'}
+            </button>
+            ${isExcluded ? '<span class="text-xs text-red-500 font-bold block mt-1">(Omitido)</span>' : ''}
+        </td>`;
+
+        activeRubric.levels.forEach(level => {
+            const desc = criterion.level_descriptions.find(d => d.level_id === level.id);
+            const isSelected = currentGrading[cIdx] === level.id;
+            
+            // Si está excluido, deshabilitamos visualmente el onclick
+            const clickAction = isExcluded ? '' : `onclick="selectGradeCell(${cIdx}, ${level.id})"`;
+            const cursorClass = isExcluded ? 'cursor-not-allowed' : 'cursor-pointer';
+            
+            table += `<td class="border p-2 cell-score ${isSelected ? 'selected' : ''} ${cursorClass}" ${clickAction}>${desc ? desc.description : 'N/A'}</td>`;
+        });
+        table += '</tr>';
+    });
+
+    table += '</tbody></table>';
+    display.innerHTML = table;
+}
+
+function toggleCriterionExclusion(cIdx) {
+    excludedCriteria[cIdx] = !excludedCriteria[cIdx];
+    // Si excluimos, limpiamos la selección actual para evitar confusiones, o la mantenemos pero no suma.
+    // Mejor mantenerla visualmente pero calcular sin ella.
+    renderGradingRubric();
+    updateFinalScores();
+}
+
+function selectGradeCell(criterionIndex, levelId) {
+    if (excludedCriteria[criterionIndex]) return; // Prevenir selección si está excluido
+    currentGrading[criterionIndex] = levelId;
+    renderGradingRubric();
+    updateFinalScores();
+}
+
+function updateFinalScores() {
+    if (!activeRubric) return;
+
+    let totalAchieved = 0;
+    let totalMax = 0;
+
+    activeRubric.criteria.forEach((criterion, idx) => {
+        // LÓGICA DE EXCLUSIÓN: Si está excluido, no suma ni al máximo ni al obtenido
+        if (excludedCriteria[idx]) return;
+
+        totalMax += criterion.max_points;
+        const selectedLevelId = currentGrading[idx];
+        if (selectedLevelId !== undefined) {
+            const level = activeRubric.levels.find(l => l.id === selectedLevelId);
+            if (level) {
+                totalAchieved += Math.min(level.points, criterion.max_points);
+            }
+        }
+    });
+
+    // Manejo de caso borde: Si se omiten TODOS los criterios, totalMax es 0
+    if (totalMax === 0) {
+        document.getElementById('final-score').textContent = `0 / 0`;
+        document.getElementById('final-grade').textContent = '--';
+        return;
+    }
+
+    document.getElementById('final-score').textContent = `${totalAchieved} / ${totalMax}`;
+
+    const percentage = totalMax > 0 ? totalAchieved / totalMax : 0;
+    const passingScore = totalMax * PASSING_PERCENTAGE;
+    let grade;
+
+    if (totalAchieved < passingScore) {
+        grade = MIN_GRADE + (totalAchieved / passingScore) * (PASS_GRADE - MIN_GRADE);
+    } else {
+        const excessScore = totalAchieved - passingScore;
+        const excessMax = totalMax - passingScore;
+        grade = PASS_GRADE + (excessScore / excessMax) * (MAX_GRADE - PASS_GRADE);
+    }
+
+    currentFinalGrade = Math.max(MIN_GRADE, Math.min(MAX_GRADE, grade)).toFixed(1);
+    
+    const gradeSpan = document.getElementById('final-grade');
+    gradeSpan.textContent = currentFinalGrade;
+    gradeSpan.className = `text-4xl font-extrabold ${parseFloat(currentFinalGrade) >= PASS_GRADE ? 'nota-aprobada' : 'nota-reprobada'}`;
+
+    const hasGrading = Object.keys(currentGrading).length > 0;
+    const saveBtn = document.getElementById('btn-save-grade');
+    if(saveBtn) saveBtn.disabled = !hasGrading;
+}
+
+// Resetear exclusiones al cambiar de estudiante o evaluación
+function resetGradingState() {
+    currentGrading = {};
+    excludedCriteria = {};
+}
+</script>

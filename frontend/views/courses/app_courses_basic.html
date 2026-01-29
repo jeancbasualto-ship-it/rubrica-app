@@ -1,0 +1,132 @@
+<script>
+function addCourse() {
+    const name = document.getElementById('course-name').value.trim();
+    const studentText = document.getElementById('student-list').value.trim();
+
+    if (!name) {
+        showMessage('Ingresa el nombre del curso.', 'error');
+        return;
+    }
+
+    const students = studentText.split('\n').filter(s => s.trim()).map((s, idx) => ({
+        id: `student_${Date.now()}_${idx}`,
+        name: s.trim()
+    }));
+
+    if (students.length === 0) {
+        showMessage('Ingresa al menos un estudiante.', 'error');
+        return;
+    }
+
+    const courseObj = {
+        id: `course_${Date.now()}`,
+        name: name,
+        students: students,
+        evaluations: window.tempEvaluations || [], // Recoger evaluaciones del editor
+        rubrics: {},
+        grades: {}
+    };
+    
+    // Limpiar temp variable
+    window.tempEvaluations = null;
+
+    // Guardar localmente y en servidor
+    courses[name] = courseObj;
+    document.getElementById('course-name').value = '';
+    document.getElementById('student-list').value = '';
+    showMessage(`Guardando curso "${name}"...`, 'loading');
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const parsed = JSON.parse(response);
+                if (parsed.error) {
+                    showMessage('Error al guardar curso: ' + parsed.error, 'error');
+                } else {
+                    courses[name].id = parsed.id || courses[name].id;
+                    showMessage(`Curso "${name}" guardado en Drive.`, 'success');
+                    // cerrar modal si está abierta
+                    try { closeAddCourseModal(); } catch(e){}
+                    if(window.renderDashboardStats) try{ renderDashboardStats(); }catch(e){}
+                    renderCourseList();
+                }
+            } catch (e) {
+                showMessage('Curso guardado.', 'success');
+                try { closeAddCourseModal(); } catch(e){}
+                if(window.renderDashboardStats) try{ renderDashboardStats(); }catch(e){}
+                renderCourseList();
+            }
+        })
+        .withFailureHandler(err => {
+            showMessage('Error al guardar curso: ' + err.message, 'error');
+            renderCourseList();
+        })
+        .saveCourse(courseObj);
+}
+
+function loadCoursesFromDrive() {
+    const container = document.getElementById('course-list-display');
+    // Si no existe course-list-display (e.g. dashboard mode), no renderizar mensaje alli, solo cargar.
+    if(container) container.innerHTML = '<p class="text-gray-500 italic">Cargando cursos desde Drive...</p>';
+
+    google.script.run
+        .withSuccessHandler(response => {
+            try {
+                const arr = JSON.parse(response);
+                // arr es un array de cursos
+                courses = {};
+                arr.forEach(c => {
+                    // Si students vienen como objetos o strings, normalizar
+                    const students = (c.students && Array.isArray(c.students)) ? c.students : [];
+                    courses[c.name] = {
+                        id: c.id || c.name,
+                        name: c.name,
+                        students: students,
+                        evaluations: c.evaluations || [], // Load explicit evaluations
+                        rubrics: c.rubrics || {},
+                        grades: c.grades || {}
+                    };
+                });
+                if(window.renderDashboardStats) try{ renderDashboardStats(); }catch(e){}
+                renderCourseList();
+            } catch (e) {
+                // Si la respuesta no es array, mostrar mensaje y mantener cursos locales
+                if(container) container.innerHTML = '<p class="text-gray-500 italic">No hay cursos guardados.</p>';
+            }
+        })
+        .withFailureHandler(err => {
+            if(container) container.innerHTML = '<p class="text-red-500">Error cargando cursos: ' + err.message + '</p>';
+        })
+        .loadCoursesFromSheets();
+}
+
+function renderCourseList() {
+    const display = document.getElementById('course-list-display');
+    const courseNames = Object.keys(courses);
+
+    if (courseNames.length === 0) {
+        display.innerHTML = '<p class="text-gray-500 italic">No hay cursos.</p>';
+        return;
+    }
+
+    display.innerHTML = courseNames.map(name => {
+        const course = courses[name];
+        return `
+            <div class="border p-4 rounded-lg bg-gray-50">
+                <h4 class="font-bold text-lg">${name}</h4>
+                <p class="text-sm text-gray-600">${course.students.length} estudiantes</p>
+                <details class="mt-2">
+                    <summary class="cursor-pointer text-blue-600 hover:text-blue-800">Ver estudiantes</summary>
+                    <ul class="mt-2 ml-4 text-sm">
+                        ${course.students.map(s => `<li>• ${s.name}</li>`).join('')}
+                    </ul>
+                </details>
+                <div class="mt-3 flex space-x-2">
+                    <button onclick="openEditCourse('${name}')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-bold py-1 px-2 rounded">✏️ Editar</button>
+                    <button onclick="confirmDeleteCourse('${name}')" class="bg-red-500 hover:bg-red-600 text-white text-sm font-bold py-1 px-2 rounded">🗑️ Eliminar</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+</script>

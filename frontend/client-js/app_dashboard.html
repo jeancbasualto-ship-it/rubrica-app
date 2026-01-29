@@ -1,0 +1,75 @@
+<script>
+/**
+ * Lógica del Dashboard
+ * Renderiza tarjetas de resumen basadas en los cursos cargados en memoria.
+ */
+function renderDashboardStats() {
+    const container = document.getElementById('dashboard-stats-container');
+    if (!container) return;
+
+    // Obtener lista de cursos del estado global
+    const courseList = typeof courses !== 'undefined' ? Object.values(courses) : [];
+
+    if (courseList.length === 0) {
+        container.innerHTML = `
+            <div class="col-span-full bg-slate-50 p-8 rounded-xl border-2 border-dashed border-slate-300 text-center">
+                <div class="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span class="text-2xl">🎓</span>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-1">No hay cursos registrados</h3>
+                <p class="text-gray-500 mb-4">Comienza creando tu primer curso para gestionar tus estudiantes.</p>
+                <button onclick="document.getElementById('open-course-editor').click()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
+                    + Crear Primer Curso
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = courseList.map(course => {
+        const studentCount = course.students ? course.students.length : 0;
+        const rubricCount = course.rubrics ? Object.keys(course.rubrics).length : 0;
+        
+        return `
+            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 group">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h4 class="font-bold text-lg text-gray-800 group-hover:text-indigo-600 transition-colors">${course.name}</h4>
+                        <span class="text-xs text-gray-500 font-mono">ID: ${course.id ? course.id.substring(0,8) : 'N/A'}</span>
+                    </div>
+                    <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                        🎓
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-gray-50 p-2 rounded-lg text-center">
+                        <div class="text-xl font-bold text-gray-900">${studentCount}</div>
+                        <div class="text-xs text-gray-500">Estudiantes</div>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded-lg text-center">
+                        <div class="text-xl font-bold text-gray-900">${rubricCount}</div>
+                        <div class="text-xs text-gray-500">Evaluaciones</div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-between pt-3 border-t border-gray-100">
+                    <button onclick="
+                        document.getElementById('nav-calificar').click(); 
+                        setTimeout(() => { 
+                            const sel = document.getElementById('select-course');
+                            if(sel) { sel.value = '${course.name}'; loadStudentsAndResetGrading(); }
+                        }, 500);
+                    " class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center">
+                        Calificar <span class="ml-1">→</span>
+                    </button>
+                    
+                    <button onclick="openEditCourse('${course.name}')" class="text-gray-400 hover:text-gray-600">
+                        ⚙️
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+</script>

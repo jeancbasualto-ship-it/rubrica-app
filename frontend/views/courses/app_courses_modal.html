@@ -1,0 +1,64 @@
+<script>
+// Compat wrappers: redirigen la UX del modal hacia el panel lateral (`course-editor-panel`).
+// Mantienen compatibilidad por si aún hay llamadas que esperan el modal.
+
+function openEditCourse(name) {
+    if (!courses[name]) return;
+    editingCourse = name;
+    openAddCourseModalFor(name);
+}
+
+function cancelEditCourse() {
+    editingCourse = null;
+    const courseNameEl = document.getElementById('course-name'); if(courseNameEl) courseNameEl.value = '';
+    const studentListEl = document.getElementById('student-list'); if(studentListEl) studentListEl.value = '';
+    const saveBtn = document.getElementById('course-save-btn');
+    if (saveBtn) { saveBtn.textContent = 'Guardar'; saveBtn.onclick = addCourse; }
+    const cancelBtn = document.getElementById('course-cancel-btn'); if(cancelBtn) cancelBtn.classList.add('hidden');
+    try{ if(window.closeCourseEditor) window.closeCourseEditor(); }catch(e){}
+}
+
+function openAddCourseModal(){
+    // Reset modal-related state but open the panel instead
+    const courseNameEl = document.getElementById('ce-course-name') || document.getElementById('course-name');
+    const studentListEl = document.getElementById('ce-students') || document.getElementById('student-list');
+    if(courseNameEl) courseNameEl.value = '';
+    if(studentListEl) studentListEl.value = '';
+
+    const sel = document.getElementById('modal-select-evaluation'); if(sel) { sel.innerHTML = '<option value="">-- Seleccionar evaluación --</option>'; sel.disabled = true; }
+    clearModalReport();
+    modalCourseContext = null;
+    // Open panel if available, otherwise fallback to modal
+    if(window.openCourseEditor) return window.openCourseEditor();
+    const modal = document.getElementById('add-course-modal'); if(modal) modal.classList.remove('hidden');
+}
+
+function closeAddCourseModal(){
+    // Close panel if present, otherwise hide modal
+    try{ if(window.closeCourseEditor) { window.closeCourseEditor(); window.editingCourse = null; } }
+    catch(e){}
+    const modal = document.getElementById('add-course-modal');
+    if(modal) { modal.classList.add('hidden'); clearModalReport(); }
+}
+
+function openAddCourseModalFor(courseName){
+    // Try using panel: populate its fields and open
+    if(!courses[courseName]) return openAddCourseModal();
+    modalCourseContext = courseName;
+    // Populate panel inputs if exist
+    const ceName = document.getElementById('ce-course-name');
+    const ceStudents = document.getElementById('ce-students');
+    if(ceName) ceName.value = courses[courseName].name;
+    if(ceStudents) ceStudents.value = courses[courseName].students.map(s=>s.name).join('\n');
+    // Mark editing state so panel submit can call updateCourse
+    window.editingCourse = courseName;
+
+    // Keep modal save button behavior for fallback modals
+    const saveBtn = document.getElementById('modal-save-course-btn');
+    if(saveBtn){ saveBtn.textContent = 'Actualizar'; saveBtn.onclick = updateCourse; }
+
+    populateModalEvaluationSelect(courseName);
+    if(window.openCourseEditor) return window.openCourseEditor();
+    const modal = document.getElementById('add-course-modal'); if(modal) modal.classList.remove('hidden');
+}
+</script>

@@ -1,0 +1,29 @@
+<script>
+function renderEditLevels() {
+    const container = document.getElementById('edit-levels-container');
+    container.innerHTML = editingRubric.levels.map((level, idx) => `
+        <div class="flex space-x-2 items-center">
+            <input type="text" value="${level.name}" onchange="editingRubric.levels[${idx}].name = this.value" class="flex-1 p-2 border rounded" placeholder="Nombre">
+            <input type="number" value="${level.points}" onchange="editingRubric.levels[${idx}].points = parseInt(this.value)" class="w-20 p-2 border rounded" placeholder="Pts">
+            <button onclick="removeLevelInEdit(${idx})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded">-</button>
+        </div>
+    `).join('');
+}
+
+function addLevelInEdit() {
+    const newId = Math.max(...editingRubric.levels.map(l => l.id)) + 1;
+    editingRubric.levels.push({ id: newId, name: `Nivel ${newId}`, points: 1 });
+    renderEditLevels();
+    renderEditCriteria();
+}
+
+function removeLevelInEdit(idx) {
+    if (editingRubric.levels.length <= 1) {
+        showMessage('Debe haber al menos un nivel.', 'error');
+        return;
+    }
+    editingRubric.levels.splice(idx, 1);
+    renderEditLevels();
+    renderEditCriteria();
+}
+</script>
