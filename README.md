@@ -72,3 +72,60 @@ Este proyecto utiliza `clasp` para el desarrollo local.
 Desarrollado para potenciar la labor docente mediante tecnología inteligente.
 
 
+
+---
+
+## 📊 RubricApp: Gestión Profesional de Rúbricas en tu Drive
+
+![RubricApp hero][def]
+![RubricApp icon](assets/rubrica-icon.png)
+
+### 📝 Descripción
+
+RubricApp es una herramienta de evaluación diseñada para docentes que priorizan la autonomía digital. A diferencia de las plataformas cerradas, esta aplicación funciona directamente sobre tu infraestructura de Google, permitiéndote gestionar, almacenar y organizar todas tus evaluaciones dentro de tu propio ecosistema de Google Drive.
+
+### 🚀 Características Principales
+
+- **Sincronización Automática con Drive:** Todas las rúbricas y resultados se guardan instantáneamente en tu unidad personal, permitiéndote una gestión total de los archivos.
+
+- **Soberanía de Datos:** Tú eres el dueño de la información. El sistema utiliza tus propias hojas de cálculo como base de datos, sin intermediarios.
+
+- **Generación Ágil de Rúbricas:** Interfaz intuitiva para definir criterios y niveles de logro de forma rápida.
+
+- **Cálculo de Notas:** Conversión automática de niveles de desempeño a escalas cuantitativas personalizables.
+
+### 🛠️ Tecnologías Utilizadas
+
+- **Core:** JavaScript (Google Apps Script).
+
+- **Backend:** Google Sheets API & Google Drive API.
+
+- **Frontend:** HTML5, CSS3 y JavaScript para una experiencia fluida en el navegador.
+
+### 📁 Gestión de Archivos
+
+Al instalar RubricApp, el sistema crea una estructura de carpetas en tu Drive donde podrás:
+
+- **Organizar por Periodos:** Mover y renombrar los archivos de evaluación según el año o semestre.
+
+- **Acceso Offline:** Al ser archivos de Google Sheets, puedes acceder a los resultados incluso sin conexión si tienes habilitada la función en Drive.
+
+- **Seguridad:** El control de acceso depende de tus permisos de Google, asegurando que solo tú o las personas que autorices vean los datos.
+
+### ⚙️ Instalación
+
+1. Copia el código de los archivos `.gs` y `.html` en un nuevo proyecto de Google Apps Script.
+2. Vincula el proyecto a una Hoja de Cálculo de Google.
+3. Otorga los permisos necesarios para que la aplicación pueda escribir archivos en tu Google Drive.
+4. Ejecuta la función `onOpen` para activar el menú de RubricApp en tu planilla.
+
+### 👤 Autor
+
+Jean Claudio Concha Basualto — Profesor de Educación Básica & Desarrollador EdTech
+
+Optimiza tu tiempo docente manteniendo el control total de tus documentos pedagógicos.
+
+
+
+
+[def]: assets/rubrica-hero.png
