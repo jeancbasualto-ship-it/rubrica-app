@@ -123,7 +123,7 @@ Al instalar RubricApp, el sistema crea una estructura de carpetas en tu Drive do
 
 Jean Claudio Concha Basualto — Profesor de Educación Básica & Desarrollador EdTech
 
-Optimiza tu tiempo docente manteniendo el control total de tus documentos pedagógicos.
+Optimiza tu tiempo docente manteniendo el control total de tus documentos pedagógicos en un solo lugar.
 
 
 
