@@ -5,6 +5,8 @@
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![Stack](https://img.shields.io/badge/Stack-Google%20Apps%20Script%20%7C%20TalwindCSS%20%7C%20VanillaJS-blue)
 
+## Ingresa a la app: https://sites.google.com/view/rubricapps/inicio
+
 ## 🚀 Características Principales
 
 ### 🧠 Inteligencia Artificial (Gemini)
@@ -67,5 +69,6 @@ Este proyecto utiliza `clasp` para el desarrollo local.
 5.  **Abrir:** `npx clasp open`
 
 ---
+Desarrollado para potenciar la labor docente mediante tecnología inteligente.
 
-_Desarrollado para potenciar la labor docente mediante tecnología inteligente._
+
