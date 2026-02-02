@@ -7,6 +7,7 @@
 
 ## Ingresa a la app: https://sites.google.com/view/rubricapps/inicio
 
+## Ingresa a la app: https://script.google.com/macros/s/AKfycbziptVQgve7Y47mgFktlhzeSOe3ATOXy4p0SqN6iJ_ob3Y7Ogh9wjWZmocyjmN0puRu/exec
 ## 🚀 Características Principales
 
 ### 🧠 Inteligencia Artificial (Gemini)
